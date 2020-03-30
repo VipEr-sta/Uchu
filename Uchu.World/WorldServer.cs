@@ -78,9 +78,7 @@ namespace Uchu.World
             {
                 foreach (var zone in info.Info.Zones)
                 {
-                    await ZoneParser.LoadZoneDataAsync(zone);
-
-                    await LoadZone(zone);
+                    await LoadZone((ZoneId) zone);
                 }
             });
 
@@ -105,16 +103,22 @@ namespace Uchu.World
             return Task.CompletedTask;
         }
 
-        private async Task LoadZone(int zone)
+        private async Task LoadZone(ZoneId zone)
         {
-            if (ZoneParser.Zones == default) await ZoneParser.LoadZoneDataAsync(zone);
+            ZoneInfo info;
+
+            try
+            {
+                info = await ZoneParser.LoadZoneDataAsync(zone);
+            }
+            catch (Exception e)
+            {
+                Logger.Error(e);
+                
+                throw;
+            }
 
             Logger.Information($"Starting {zone}");
-
-            if (ZoneParser?.Zones == default || !ZoneParser.Zones.TryGetValue(zone, out var info))
-            {
-                throw new Exception($"Failed to find info for {(ZoneId) zone}");
-            }
 
             var zoneInstance = new Zone(info, this, 0, 0); // TODO Instance/Clone
             

@@ -10,8 +10,6 @@ namespace Uchu.Navigation
 {
     public class Solver
     {
-        private Node[] Nodes { get; set; }
-        
         private Graph Graph { get; set; }
         
         private Star Star { get; set; }
@@ -73,8 +71,6 @@ namespace Uchu.Navigation
             graph.Ln = new ArrayList(nodes.Values.ToArray());
             graph.La = new ArrayList(connections.ToArray());
 
-            Nodes = nodes.Values.ToArray();
-
             Graph = graph;
 
             Star = new Star(Graph);
@@ -104,9 +100,9 @@ namespace Uchu.Navigation
 
         private Node GetClosest(Vector3 value)
         {
-            var closest = Nodes[default];
+            var closest = (Node) Graph.Ln[default];
 
-            foreach (var node in Nodes)
+            foreach (Node node in Graph.Ln)
             {
                 var distance = Vector3.Distance(node.ToVector3(), value);
                 var closestDistance = Vector3.Distance(closest.ToVector3(), value);
