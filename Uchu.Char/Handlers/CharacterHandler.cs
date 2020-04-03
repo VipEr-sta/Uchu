@@ -107,9 +107,11 @@ namespace Uchu.Char.Handlers
                 pantsLot = (uint) (pants != null ? pants.Id : 2508); // Select 'Bright Red Pants' if not found.
             }
 
-            var first = (await Server.Resources.ReadTextAsync("names/minifigname_first.txt")).Split('\n');
-            var middle = (await Server.Resources.ReadTextAsync("names/minifigname_middle.txt")).Split('\n');
-            var last = (await Server.Resources.ReadTextAsync("names/minifigname_last.txt")).Split('\n');
+            var configuration = Server.Configuration.ResourceConfiguration;
+            
+            var first = (await Server.Resources.ReadTextAsync($"{configuration.Names}/minifigname_first.txt")).Split('\n');
+            var middle = (await Server.Resources.ReadTextAsync($"{configuration.Names}/minifigname_middle.txt")).Split('\n');
+            var last = (await Server.Resources.ReadTextAsync($"{configuration.Names}/minifigname_last.txt")).Split('\n');
 
             var name = (
                 first[packet.Predefined.First] +

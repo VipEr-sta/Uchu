@@ -156,10 +156,6 @@ namespace Uchu.World.Handlers
             player.Message(
                 new RestoreToPostLoadStatsMessage {Associate = player}
             );
-
-            await player.OnWorldLoad.InvokeAsync();
-            
-            player.OnWorldLoad.Clear();
         }
 
         /// <summary>

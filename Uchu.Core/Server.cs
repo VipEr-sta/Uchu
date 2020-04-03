@@ -42,7 +42,7 @@ namespace Uchu.Core
 
         public IFileResources Resources { get; private set; }
 
-        public Configuration Config { get; private set; }
+        public Configuration Configuration { get; private set; }
         
         public SsoService SsoService { get; private set; }
         
@@ -88,21 +88,18 @@ namespace Uchu.Core
 
             await using (var fs = File.OpenRead(configFile))
             {
-                Logger.Config = Config = (Configuration) serializer.Deserialize(fs);
+                Logger.Config = Configuration = (Configuration) serializer.Deserialize(fs);
 
-                UchuContextBase.Config = Config;
+                UchuContextBase.Config = Configuration;
             }
 
             await SetupApiAsync().ConfigureAwait(false);
 
-            if (!string.IsNullOrWhiteSpace(Config.ResourcesConfiguration?.GameResourceFolder))
-            {
-                Resources = new LocalResources(Config);
-            }
+            Resources = new LocalResources(Configuration);
             
-            var certificateFilePath = Path.Combine(MasterPath, Config.Networking.Certificate);
+            var certificateFilePath = Path.Combine(MasterPath, Configuration.SecurityConfiguration.Certificate);
             
-            if (Config.Networking?.Certificate != default && File.Exists(certificateFilePath))
+            if (Configuration.SecurityConfiguration?.Certificate != default && File.Exists(certificateFilePath))
             {
                 var cert = new X509Certificate2(certificateFilePath);
 
@@ -117,7 +114,7 @@ namespace Uchu.Core
                 RakNetServer = new TcpUdpServer(Port, "3.25 ND1");
             }
 
-            SsoService = new SsoService(Config.SsoConfig?.Domain ?? "");
+            SsoService = new SsoService(Configuration.SsoConfiguration?.Domain ?? "");
 
             try
             {
@@ -135,10 +132,10 @@ namespace Uchu.Core
 
         public async Task SetupApiAsync()
         {
-            Api = new ApiManager(Config.ApiConfig.Protocol, Config.ApiConfig.Domain);
+            Api = new ApiManager(Configuration.ApiConfiguration.Protocol, Configuration.ApiConfiguration.Domain);
 
             var instance = await Api.RunCommandAsync<InstanceInfoResponse>(
-                Config.ApiConfig.Port, $"instance/target?i={Id}"
+                Configuration.ApiConfiguration.Port, $"instance/target?i={Id}"
             ).ConfigureAwait(false);
 
             if (!instance.Success)
@@ -166,15 +163,22 @@ namespace Uchu.Core
             
             Running = true;
 
-            var tasks = new[]
+            var tasks = new List<Task>
             {
                 RakNetServer.RunAsync(),
                 Api.StartAsync(ApiPort)
             };
 
+            tasks.AddRange(await StartAdditionalTasksAsync().ConfigureAwait(false));
+
             await Task.WhenAny(tasks).ConfigureAwait(false);
 
             await StopAsync().ConfigureAwait(false);
+        }
+
+        protected virtual Task<Task[]> StartAdditionalTasksAsync()
+        {
+            return Task.FromResult(Array.Empty<Task>());
         }
 
         private void StartConsole()
@@ -207,7 +211,7 @@ namespace Uchu.Core
 
         public Task StopAsync()
         {
-            Logger.Log("Shutting down...");
+            Logger.Information("Shutting down...");
 
             Running = false;
 
@@ -220,7 +224,9 @@ namespace Uchu.Core
 
         public string GetHost()
         {
-            return !string.IsNullOrWhiteSpace(Config.Networking.Hostname) ? Config.Networking.Hostname : "localhost";
+            var configuration = Configuration.SecurityConfiguration;
+            
+            return !string.IsNullOrWhiteSpace(configuration.Hostname) ? configuration.Hostname : "localhost";
         }
 
         public virtual void RegisterAssembly(Assembly assembly)

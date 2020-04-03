@@ -6,11 +6,13 @@ namespace Uchu.Core.Providers
     {
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
+            var configuration = Config.DatabaseConfiguration;
+            
             optionsBuilder.UseMySql(
-                $"Server={Config.Database.Host};" +
-                $"Database={Config.Database.Database};" +
-                $"Uid={Config.Database.Username};" +
-                $"Pwd={Config.Database.Password}"
+                $"Server={configuration.Host};" +
+                $"Database={configuration.Database};" +
+                $"Uid={configuration.Username};" +
+                $"Pwd={configuration.Password}"
             );
         }
     }

@@ -16,7 +16,7 @@ namespace Uchu.Master.Api
             var port = await MasterServer.ClaimApiPortAsync();
 
             MasterServer.Subsidiaries.Add(port);
-            
+
             return new ClaimPortResponse
             {
                 Success = true,
@@ -28,14 +28,14 @@ namespace Uchu.Master.Api
         public async Task<object> GetBasicInstance(string typeString)
         {
             var response = new InstanceInfoResponse();
-            
+
             if (!int.TryParse(typeString, out var type))
             {
                 response.FailedReason = "invalid type";
 
                 return response;
             }
-            
+
             var instances = await MasterServer.GetAllInstancesAsync();
 
             var instance = instances.FirstOrDefault(i => i.Type == type);
@@ -62,10 +62,10 @@ namespace Uchu.Master.Api
             if (!Guid.TryParse(id, out var guid))
             {
                 response.FailedReason = "invalid guid";
-                
+
                 return response;
             }
-            
+
             var instances = await MasterServer.GetAllInstancesAsync();
 
             var instance = instances.FirstOrDefault(i => i.Id == guid);
@@ -80,7 +80,7 @@ namespace Uchu.Master.Api
             response.Success = true;
             response.Hosting = instance.MasterApi == MasterServer.ApiPort;
             response.Info = instance;
-            
+
             return response;
         }
 
@@ -127,7 +127,7 @@ namespace Uchu.Master.Api
             {
                 Success = true
             };
-            
+
             var instances = MasterServer.Instances.Select(i => new InstanceInfo
             {
                 MasterApi = MasterServer.ApiPort,
@@ -137,7 +137,7 @@ namespace Uchu.Master.Api
                 Type = (int) i.ServerType,
                 Zones = i.Zones.Select(z => (int) z).ToList()
             }).ToList();
-            
+
             response.Instances = instances;
 
             return response;
@@ -167,66 +167,7 @@ namespace Uchu.Master.Api
                 return response;
             }
 
-            Guid id;
-            
-            try
-            {
-                var port = await MasterServer.ClaimWorldPortAsync();
-
-                id = await MasterServer.StartInstanceAsync(ServerType.World, port);
-            }
-            catch (Exception e)
-            {
-                Logger.Error(e);
-
-                response.FailedReason = "error";
-                
-                return response;
-            }
-
-            var instance = MasterServer.Instances.First(i => i.Id == id);
-            
-            instance.Zones.Add((ZoneId) zone);
-
-            response.Success = true;
-
-            response.Id = id;
-
-            response.ApiPort = instance.ApiPort;
-
-            var timeout = 1000;
-
-            while (true)
-            {
-                try
-                {
-                    var verify = await MasterServer.Api.RunCommandAsync<ReadyCallbackResponse>(
-                        instance.ApiPort, "server/verify"
-                    ).ConfigureAwait(false);
-
-                    if (!verify.Success)
-                    {
-                        Logger.Error(verify.FailedReason);
-
-                        throw new Exception(verify.FailedReason);
-                    }
-
-                    instance.Ready = true;
-                    
-                    break;
-                }
-                catch
-                {
-                    if (timeout <= 0)
-                    {
-                        throw new TimeoutException("commission timed out");
-                    }
-                    
-                    await Task.Delay(50);
-
-                    timeout--;
-                }
-            }
+            response = await MasterServer.CommissionWorldAsync((ZoneId) zone);
 
             return response;
         }
@@ -236,11 +177,11 @@ namespace Uchu.Master.Api
         public async Task<object> DecommissionInstance(string id)
         {
             var response = new BaseResponse();
-            
+
             if (!Guid.TryParse(id, out var guid))
             {
                 response.FailedReason = "invalid guid";
-                
+
                 return response;
             }
 
@@ -254,7 +195,7 @@ namespace Uchu.Master.Api
 
                 return response;
             }
-            
+
             instance.Process.Kill();
 
             instances.Remove(instance);
@@ -266,7 +207,7 @@ namespace Uchu.Master.Api
         public async Task<object> SeekWorld(string zone)
         {
             var response = new SeekWorldResponse();
-            
+
             if (!int.TryParse(zone, out var zoneId))
             {
                 response.FailedReason = "invalid zone";
@@ -290,9 +231,9 @@ namespace Uchu.Master.Api
                 }
 
                 if (playerInfo.Characters.Count >= playerInfo.MaxPlayers) continue;
-                
+
                 response.Success = true;
-                        
+
                 response.ApiPort = instance.ApiPort;
 
                 response.Id = instance.Id;
@@ -311,14 +252,14 @@ namespace Uchu.Master.Api
         public async Task<object> AllocateWorld(string zone)
         {
             var response = new SeekWorldResponse();
-            
+
             if (MasterServer.IsSubsidiary)
             {
                 response.FailedReason = "is subsidiary";
-                
+
                 return response;
             }
-            
+
             if (!int.TryParse(zone, out var zoneId))
             {
                 response.FailedReason = "invalid zone";
@@ -329,7 +270,7 @@ namespace Uchu.Master.Api
             var toCheck = new List<int> {MasterServer.ApiPort};
 
             toCheck.AddRange(MasterServer.Subsidiaries);
-            
+
             foreach (var subsidiary in toCheck)
             {
                 var status = await MasterServer.Api.RunCommandAsync<MasterStatusResponse>(
@@ -337,13 +278,13 @@ namespace Uchu.Master.Api
                 ).ConfigureAwait(false);
 
                 if (!status.CanHostAdditionWorldInstances) continue;
-                
+
                 var details = await MasterServer.Api.RunCommandAsync<CommissionInstanceResponse>(
                     subsidiary, $"instance/commission?z={zoneId}"
                 ).ConfigureAwait(false);
 
                 response.Success = true;
-                
+
                 response.ApiPort = details.ApiPort;
 
                 response.Id = details.Id;
@@ -362,12 +303,12 @@ namespace Uchu.Master.Api
             var response = new MasterStatusResponse();
 
             response.Success = true;
-            
+
             response.Instances = MasterServer.Instances.Select(i => i.Id).ToList();
 
             response.CanHostAdditionWorldInstances =
                 MasterServer.Instances.Count(i => i.ServerType == ServerType.World) <
-                MasterServer.Config.Networking.MaxWorldServers;
+                MasterServer.Configuration.InfrastructureConfiguration.Capacity;
 
             return response;
         }

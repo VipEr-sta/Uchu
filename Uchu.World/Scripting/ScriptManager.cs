@@ -39,10 +39,8 @@ namespace Uchu.World.Scripting
             
             var scriptPacks = new List<ScriptPack>();
             
-            foreach (var scriptPackPath in Zone.Server.Config.DllSource.ScriptDllSource)
+            foreach (var scriptPackPath in Zone.Server.Configuration.ModuleConfiguration.ScriptDllSource)
             {
-                Console.WriteLine(scriptPackPath);
-                
                 try
                 {
                     var scriptPack = new NativeScriptPack(Zone, scriptPackPath);
@@ -70,7 +68,11 @@ namespace Uchu.World.Scripting
             
             ManagedScriptEngine.Init();
 
-            foreach (var script in Zone.Server.Config.ManagedScriptSources?.Scripts ?? new List<string>())
+            var preload = Zone.Server.Configuration.PythonConfiguration?.Scripts;
+            
+            if (preload == default || preload.Length == 0) return scriptPacks;
+            
+            foreach (var script in preload)
             {
                 Logger.Information($"Loading {script} managed script pack");
                 

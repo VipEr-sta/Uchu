@@ -29,7 +29,7 @@ namespace Uchu.World
         /// <summary>
         ///     Also known as ExtraInfo
         /// </summary>
-        public LegoDataDictionary Settings { get; set; }
+        public LegoDataDictionary Settings { get; protected set; }
 
         public string ClientName { get; private set; }
 
@@ -42,7 +42,10 @@ namespace Uchu.World
             {
                 _layer = value;
 
-                OnLayerChanged?.Invoke(_layer);
+                foreach (var player in Zone.Players)
+                {
+                    player.UpdateView(this);
+                }
             }
         }
 
@@ -92,8 +95,6 @@ namespace Uchu.World
 
         #region Events
 
-        public Event<Mask> OnLayerChanged { get; } = new Event<Mask>();
-
         public Event<Player> OnInteract { get; } = new Event<Player>();
 
         public AsyncEvent<int, Player> OnEmoteReceived { get; } = new AsyncEvent<int, Player>();
@@ -123,8 +124,6 @@ namespace Uchu.World
 
             Listen(OnDestroyed, () =>
             {
-                OnLayerChanged.Clear();
-                
                 OnInteract.Clear();
                 
                 OnEmoteReceived.Clear();
@@ -134,14 +133,6 @@ namespace Uchu.World
                 foreach (var component in _components.ToArray()) Destroy(component);
 
                 Destruct(this);
-            });
-
-            Listen(OnLayerChanged, mask =>
-            {
-                foreach (var player in Zone.Players)
-                {
-                    player.ViewUpdate(this);
-                }
             });
         }
 
@@ -155,7 +146,7 @@ namespace Uchu.World
 
         #endregion
 
-        #region Utils
+        #region Utilities
 
         public override string ToString()
         {

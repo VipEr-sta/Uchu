@@ -6,11 +6,13 @@ namespace Uchu.Core.Providers
     {
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
+            var configuration = Config.DatabaseConfiguration;
+
             optionsBuilder.UseNpgsql(
-                $"Host={Config.Database.Host};" +
-                $"Database={Config.Database.Database};" +
-                $"Username={Config.Database.Username};" +
-                $"Password={Config.Database.Password}"
+                $"Host={configuration.Host};" +
+                $"Database={configuration.Database};" +
+                $"Username={configuration.Username};" +
+                $"Password={configuration.Password}"
             );
         }
     }

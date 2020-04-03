@@ -42,5 +42,7 @@ namespace Uchu.Core
         {
             return Id;
         }
+
+        public static ZoneId Invalid => new ZoneId(0);
     }
 }

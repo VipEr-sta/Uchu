@@ -17,9 +17,9 @@ namespace Uchu.Master
 {
     internal static class MasterServer
     {
-        public static string DllLocation { get; set; }
+        public static string InstanceModule { get; set; }
 
-        public static Configuration Config { get; set; }
+        public static Configuration Configuration { get; set; }
 
         public static List<ServerInstance> Instances { get; set; }
         
@@ -41,7 +41,7 @@ namespace Uchu.Master
         
         public static ApiManager Api { get; set; }
 
-        public static int MasterPort => Config.ApiConfig.Port;
+        public static int MasterPort => Configuration.ApiConfiguration.Port;
         
         private static async Task Main(string[] args)
         {
@@ -55,7 +55,7 @@ namespace Uchu.Master
 
             if (!databaseVerified)
             {
-                Logger.Error($"Failed to connect to database provider \"{Config.Database.Provider}\"");
+                Logger.Error($"Failed to connect to database provider \"{Configuration.DatabaseConfiguration.Provider}\"");
                 
                 return;
             }
@@ -103,9 +103,9 @@ namespace Uchu.Master
 
         private static async Task SetupApiAsync()
         {
-            var apiConfig = Config.ApiConfig;
+            var apiConfiguration = Configuration.ApiConfiguration;
 
-            Api = new ApiManager(apiConfig.Protocol, apiConfig.Domain);
+            Api = new ApiManager(apiConfiguration.Protocol, apiConfiguration.Domain);
             
             Api.RegisterCommandCollection<AccountCommands>();
             
@@ -130,7 +130,7 @@ namespace Uchu.Master
 
             Api.OnLoaded += async () =>
             {
-                Logger.Information($"API Ready!");
+                Logger.Information("API Ready!");
                 
                 await StartDefaultInstances();
             };
@@ -138,10 +138,14 @@ namespace Uchu.Master
 
         private static async Task StartDefaultInstances()
         {
-            var hostAuthentication = Config.Networking.HostAuthentication;
+            var authentication = Configuration.InfrastructureConfiguration.Authentication;
 
-            var hostCharacter = Config.Networking.HostCharacter;
+            var character = Configuration.InfrastructureConfiguration.Character;
 
+            var hostAuthentication = authentication.Active;
+
+            var hostCharacter = character.Active;
+            
             if (IsSubsidiary)
             {
                 var instances = await GetAllInstancesAsync();
@@ -165,13 +169,21 @@ namespace Uchu.Master
 
             if (hostAuthentication)
             {
-                await StartInstanceAsync(ServerType.Authentication, 21836);
+                await StartInstanceAsync(ServerType.Authentication, authentication.Port);
             }
 
             if (hostCharacter)
             {
-                await StartInstanceAsync(ServerType.Character, Config.Networking.CharacterPort);
+                await StartInstanceAsync(ServerType.Character, character.Port);
             }
+
+            var worlds = Configuration.InfrastructureConfiguration.WorldConfigurations;
+
+            var preload = worlds.Where(w => w.Active && w.Zone != ZoneId.Invalid);
+
+            await Task.WhenAll(preload.Select(
+                configuration => CommissionWorldAsync((ZoneId) configuration.Zone, configuration.Port))
+            );
         }
 
         private static async Task ConfigureAsync()
@@ -182,15 +194,15 @@ namespace Uchu.Master
             if (File.Exists(fn))
             {
                 await using var file = File.OpenRead(fn);
-                Logger.Config = Config = (Configuration) serializer.Deserialize(file);
+                Logger.Config = Configuration = (Configuration) serializer.Deserialize(file);
             }
             else
             {
-                Logger.Config = Config = new Configuration();
+                Logger.Config = Configuration = new Configuration();
 
                 var backup = File.CreateText("config.default.xml");
 
-                serializer.Serialize(backup, Config);
+                serializer.Serialize(backup, Configuration);
 
                 backup.Close();
 
@@ -205,15 +217,15 @@ namespace Uchu.Master
 
             SqliteContext.DatabasePath = Path.Combine(Directory.GetCurrentDirectory(), "./Uchu.sqlite");
 
-            UchuContextBase.Config = Config;
+            UchuContextBase.Config = Configuration;
 
-            var configPath = Config.ResourcesConfiguration?.GameResourceFolder;
+            var configPath = Configuration.ResourceConfiguration?.Root;
             
             if (!string.IsNullOrWhiteSpace(configPath))
             {
                 if (EnsureUnpackedClient(configPath))
                 {
-                    Logger.Information($"Using local resources at `{Config.ResourcesConfiguration.GameResourceFolder}`");
+                    Logger.Information($"Using local resources at `{Configuration.ResourceConfiguration.Root}`");
                 }
                 else
                 {
@@ -229,11 +241,11 @@ namespace Uchu.Master
                 throw new DirectoryNotFoundException("No local resource path.");
             }
 
-            UseAuthentication = Config.Networking.HostAuthentication;
+            UseAuthentication = Configuration.InfrastructureConfiguration.Authentication.Active;
             
-            DllLocation = Config.DllSource.Instance;
+            InstanceModule = Configuration.ModuleConfiguration.Instance;
 
-            ApiPortIndex = Config.ApiConfig.Port;
+            ApiPortIndex = Configuration.ApiConfiguration.Port;
 
             var source = Directory.GetCurrentDirectory();
             
@@ -245,8 +257,7 @@ namespace Uchu.Master
 
         private static bool EnsureUnpackedClient(string directory)
         {
-            return directory.EndsWith("res") &&
-                   Directory.GetFiles(directory, "*.luz", SearchOption.AllDirectories).Any();
+            return Directory.GetFiles(directory, "*.luz", SearchOption.AllDirectories).Length != default;
         }
 
         public static async Task<Guid> StartInstanceAsync(ServerType type, int port)
@@ -260,7 +271,7 @@ namespace Uchu.Master
                 ApiPort = await ClaimApiPortAsync(),
             };
 
-            instance.Start(DllLocation, Config.DllSource.DotNetPath);
+            instance.Start(InstanceModule, Configuration.ModuleConfiguration.DotNetPath);
             
             Instances.Add(instance);
 
@@ -286,7 +297,9 @@ namespace Uchu.Master
 
             var worlds = instances.Where(i => i.Type == (int) ServerType.World).ToArray();
 
-            var specified = Config.Networking.WorldPorts.Count > 0;
+            var configurations = Configuration.InfrastructureConfiguration.WorldConfigurations;
+            
+            var specified = configurations.Length > 0;
 
             lock (Api)
             {
@@ -296,18 +309,22 @@ namespace Uchu.Master
                     
                     return worlds.Max(i => i.Port) + 1;
                 }
-                
-                var available = Config.Networking.WorldPorts.ToList();
+
+                var available = configurations.Where(
+                    c => c.Active && c.Zone == ZoneId.Invalid
+                ).ToList();
 
                 foreach (var world in worlds)
                 {
-                    if (available.Contains(world.Port))
+                    var claimed = available.FirstOrDefault(a => a.Port == world.Port);
+                    
+                    if (claimed != default)
                     {
-                        available.Remove(world.Port);
+                        available.Remove(claimed);
                     }
                 }
 
-                return available.FirstOrDefault();
+                return available.FirstOrDefault()?.Port ?? 0;
             }
         }
 
@@ -370,6 +387,85 @@ namespace Uchu.Master
             }
 
             return instances;
+        }
+
+        public static async Task<CommissionInstanceResponse> CommissionWorldAsync(ZoneId zoneId, int port = default)
+        {
+            var response = new CommissionInstanceResponse();
+            
+            Guid id;
+
+            var instances = await GetAllInstancesAsync();
+            
+            try
+            {
+                var selectedPort = port == default ? await ClaimWorldPortAsync() : port;
+
+                if (instances.Any(i => i.Port == selectedPort))
+                {
+                    Logger.Error("invalid port");
+
+                    response.FailedReason = "invalid port";
+
+                    return response;
+                }
+                
+                id = await StartInstanceAsync(ServerType.World, selectedPort);
+            }
+            catch (Exception e)
+            {
+                Logger.Error(e);
+
+                response.FailedReason = "error";
+
+                return response;
+            }
+
+            var instance = Instances.First(i => i.Id == id);
+
+            instance.Zones.Add(zoneId);
+
+            response.Success = true;
+
+            response.Id = id;
+
+            response.ApiPort = instance.ApiPort;
+
+            var timeout = 1000;
+
+            while (true)
+            {
+                try
+                {
+                    var verify = await Api.RunCommandAsync<ReadyCallbackResponse>(
+                        instance.ApiPort, "server/verify"
+                    ).ConfigureAwait(false);
+
+                    if (!verify.Success)
+                    {
+                        Logger.Error(verify.FailedReason);
+
+                        throw new Exception(verify.FailedReason);
+                    }
+
+                    instance.Ready = true;
+
+                    break;
+                }
+                catch
+                {
+                    if (timeout <= 0)
+                    {
+                        throw new TimeoutException("commission timed out");
+                    }
+
+                    await Task.Delay(50);
+
+                    timeout--;
+                }
+            }
+
+            return response;
         }
     }
 }

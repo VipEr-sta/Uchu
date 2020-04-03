@@ -18,7 +18,8 @@ namespace Uchu.Python
 
             var paths = Engine.GetSearchPaths().ToList();
 
-            paths.AddRange(AdditionalPaths);
+            if (AdditionalPaths != default && AdditionalPaths.Length != default)
+                paths.AddRange(AdditionalPaths);
 
             Engine.SetSearchPaths(paths);
         }

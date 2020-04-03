@@ -7,13 +7,13 @@ namespace Uchu.Core.IO
 {
     public class LocalResources : IFileResources
     {
-        private readonly Configuration _config;
+        private Configuration Configuration { get; }
 
-        public string RootPath => _config.ResourcesConfiguration.GameResourceFolder;
+        public string Root => Configuration.ResourceConfiguration.Root;
 
-        public LocalResources(Configuration config)
+        public LocalResources(Configuration configuration)
         {
-            _config = config;
+            Configuration = configuration;
         }
 
         public async Task<string> ReadTextAsync(string path)
@@ -46,12 +46,12 @@ namespace Uchu.Core.IO
         public IEnumerable<string> GetAllFilesWithExtension(string extension)
         {
             var files = Directory.GetFiles(
-                _config.ResourcesConfiguration.GameResourceFolder,
+                Root,
                 $"*.{extension}",
                 SearchOption.AllDirectories
             );
             
-            var folder = new Uri(RootPath);
+            var folder = new Uri(Root);
 
             for (var i = 0; i < files.Length; i++)
             {
@@ -72,7 +72,7 @@ namespace Uchu.Core.IO
         public IEnumerable<string> GetAllFilesWithExtension(string location, string extension)
         {
             var files = Directory.GetFiles(
-                Path.Combine(_config.ResourcesConfiguration.GameResourceFolder, location),
+                Path.Combine(Root, location),
                 $"*.{extension}",
                 SearchOption.TopDirectoryOnly
             );
@@ -82,9 +82,9 @@ namespace Uchu.Core.IO
         
         public Stream GetStream(string path)
         {
-            path = path.Replace('\\', '/').ToLower();
+            path = path.Replace('\\', '/').ToLowerInvariant();
 
-            return File.OpenRead(Path.Combine(_config.ResourcesConfiguration.GameResourceFolder, path));
+            return File.OpenRead(Path.Combine(Root, path));
         }
     }
 }

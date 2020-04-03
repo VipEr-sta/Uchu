@@ -22,8 +22,6 @@ namespace Uchu.World
     {
         private readonly GameMessageHandlerMap _gameMessageHandlerMap;
 
-        private ZoneId ZoneId { get; set; }
-
         public List<Zone> Zones { get; }
 
         public uint MaxPlayerCount { get; }
@@ -46,8 +44,8 @@ namespace Uchu.World
             Logger.Information($"Created WorldServer on PID {Process.GetCurrentProcess().Id.ToString()}");
 
             await base.ConfigureAsync(configFile);
-            
-            ZoneParser = new ZoneParser(Resources);
+
+            ZoneParser = new ZoneParser(Resources, Configuration.ResourceConfiguration);
             
             Whitelist = new Whitelist(Resources);
             
@@ -64,25 +62,9 @@ namespace Uchu.World
 
             RakNetServer.ClientDisconnected += HandleDisconnect;
             
-            var instance = await Api.RunCommandAsync<InstanceInfoResponse>(
-                Config.ApiConfig.Port, $"instance/target?i={Id}"
-            ).ConfigureAwait(false);
-
-            ZoneId = (ZoneId) instance.Info.Zones.First();
-            
-            var info = await Api.RunCommandAsync<InstanceInfoResponse>(MasterApi, $"instance/target?i={Id}");
-
             Api.RegisterCommandCollection<WorldCommands>(this);
-            
-            var _ = Task.Run(async () =>
-            {
-                foreach (var zone in info.Info.Zones)
-                {
-                    await LoadZone((ZoneId) zone);
-                }
-            });
 
-            ManagedScriptEngine.AdditionalPaths = Config.ManagedScriptSources.Paths.ToArray();
+            ManagedScriptEngine.AdditionalPaths = Configuration.PythonConfiguration.Paths.ToArray();
             
             Logger.Information($"Setting up world server: {Id}");
         }
@@ -103,7 +85,27 @@ namespace Uchu.World
             return Task.CompletedTask;
         }
 
-        private async Task LoadZone(ZoneId zone)
+        protected override async Task<Task[]> StartAdditionalTasksAsync()
+        {
+            Logger.Debug($"Port: {Port}");
+            
+            var instance = await Api.RunCommandAsync<InstanceInfoResponse>(
+                Configuration.ApiConfiguration.Port, $"instance/target?i={Id}"
+            ).ConfigureAwait(false);
+
+            var tasks = new List<Task>();
+
+            foreach (ZoneId zone in instance.Info.Zones)
+            {
+                var runtime = await LoadZone(zone);
+
+                tasks.Add(runtime);
+            }
+
+            return tasks.ToArray();
+        }
+
+        private async Task<Task> LoadZone(ZoneId zone)
         {
             ZoneInfo info;
 
@@ -124,12 +126,16 @@ namespace Uchu.World
             
             Zones.Add(zoneInstance);
             
-            await zoneInstance.InitializeAsync();
+            return await zoneInstance.InitializeAsync();
         }
 
         public async Task<Zone> GetZoneAsync(ZoneId zoneId)
         {
-            if (ZoneId == zoneId)
+            var instance = await Api.RunCommandAsync<InstanceInfoResponse>(
+                Configuration.ApiConfiguration.Port, $"instance/target?i={Id}"
+            ).ConfigureAwait(false);
+
+            if (instance.Info.Zones.Contains(zoneId))
             {
                 //
                 // Wait for zone to load
@@ -143,6 +149,8 @@ namespace Uchu.World
                     {
                         return zone;
                     }
+                    
+                    Logger.Debug($"Waiting for {zoneId} to load...");
                     
                     await Task.Delay(1000);
                 }

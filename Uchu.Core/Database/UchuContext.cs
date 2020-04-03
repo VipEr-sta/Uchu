@@ -39,9 +39,9 @@ namespace Uchu.Core
 
         public UchuContext()
         {
-            var config = UchuContextBase.Config;
+            var configuration = UchuContextBase.Config;
 
-            switch (config.Database.Provider)
+            switch (configuration.DatabaseConfiguration.Provider)
             {
                 case "postgres":
                     ContextBase = new PostgresContext();
@@ -53,8 +53,8 @@ namespace Uchu.Core
                     ContextBase = new SqliteContext();
                     break;
                 default:
-                    Logger.Error($"{config.Database.Provider} is a invalid or unsupported database provider");
-                    throw new Exception($"Invalid database provider: \"{config.Database.Provider}\"");
+                    Logger.Error($"{configuration.DatabaseConfiguration.Provider} is a invalid or unsupported database provider");
+                    throw new Exception($"Invalid database provider: \"{configuration.DatabaseConfiguration.Provider}\"");
             }
         }
         

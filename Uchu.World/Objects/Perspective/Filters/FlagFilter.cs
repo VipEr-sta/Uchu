@@ -25,7 +25,7 @@ namespace Uchu.World.Filters
             
             if (!gameObject.TryGetComponent<CollectibleComponent>(out var collectibleComponent)) return true;
 
-            return !Collected.Contains((float) collectibleComponent.CollectibleId + ((int) gameObject.Zone.ZoneId << 8));
+            return !Collected.Contains((float) collectibleComponent.CollectibleId + (gameObject.Zone.ZoneId << 8));
         }
     }
 }

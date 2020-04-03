@@ -58,7 +58,6 @@ namespace Uchu.World
             {
                 OnFireServerEvent.Clear();
                 OnLootPickup.Clear();
-                OnWorldLoad.Clear();
                 OnPositionUpdate.Clear();
             });
         }
@@ -67,14 +66,14 @@ namespace Uchu.World
             new AsyncEventDictionary<string, FireServerEventMessage>();
 
         public AsyncEvent<Lot> OnLootPickup { get; } = new AsyncEvent<Lot>();
-        
-        public AsyncEvent OnWorldLoad { get; } = new AsyncEvent();
 
         public AsyncEvent<Vector3, Quaternion> OnPositionUpdate { get; } = new AsyncEvent<Vector3, Quaternion>();
 
         public IRakConnection Connection { get; private set; }
 
         public Perspective Perspective { get; private set; }
+
+        public long EntitledCurrency { get; set; }
         
         public PlayerChatChannel ChatChannel { get; set; }
 
@@ -118,8 +117,6 @@ namespace Uchu.World
             }
             set => Task.Run(async () => { await SetCurrencyAsync(value); });
         }
-
-        public long EntitledCurrency { get; set; }
 
         public long UniverseScore
         {
@@ -359,8 +356,8 @@ namespace Uchu.World
                 }
             }
         }
-        
-        public void ViewUpdate(GameObject gameObject)
+
+        internal void UpdateView(GameObject gameObject)
         {
             var spawned = Perspective.LoadedObjects.ToArray().Contains(gameObject);
 
@@ -464,9 +461,7 @@ namespace Uchu.World
             {
                 if (levelProgressionLookup.RequiredUScore > score) break;
 
-                Debug.Assert(levelProgressionLookup.Id != null, "levelProgressionLookup.Id != null");
-
-                character.Level = levelProgressionLookup.Id.Value;
+                if (levelProgressionLookup.Id != null) character.Level = levelProgressionLookup.Id.Value;
             }
 
             Message(new ModifyLegoScoreMessage
@@ -495,9 +490,7 @@ namespace Uchu.World
 
             character.Level = level;
 
-            Debug.Assert(lookup.RequiredUScore != null, "lookup.RequiredUScore != null");
-
-            character.UniverseScore = lookup.RequiredUScore.Value;
+            if (lookup.RequiredUScore != null) character.UniverseScore = lookup.RequiredUScore.Value;
 
             Message(new ModifyLegoScoreMessage
             {

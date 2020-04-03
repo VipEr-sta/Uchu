@@ -1,11 +1,8 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
-using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
-using System.Web;
 using System.Xml.Serialization;
-using Microsoft.EntityFrameworkCore;
 using Uchu.Api;
 using Uchu.Api.Models;
 using Uchu.Auth.Handlers;
@@ -87,10 +84,10 @@ namespace Uchu.Instance
 
             SqliteContext.DatabasePath = Path.Combine(masterPath, "./Uchu.sqlite");
 
-            var api = new ApiManager(configuration.ApiConfig.Protocol, configuration.ApiConfig.Domain);
+            var api = new ApiManager(configuration.ApiConfiguration.Protocol, configuration.ApiConfiguration.Domain);
 
             var instance = await api.RunCommandAsync<InstanceInfoResponse>(
-                configuration.ApiConfig.Port, $"instance/target?i={Id}"
+                configuration.ApiConfiguration.Port, $"instance/target?i={Id}"
             ).ConfigureAwait(false);
 
             if (!instance.Success)

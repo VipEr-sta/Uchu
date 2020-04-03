@@ -6,7 +6,7 @@ namespace Uchu.Core.IO
 {
     public interface IFileResources
     {
-        string RootPath { get; }
+        string Root { get; }
 
         Task<string> ReadTextAsync(string path);
 

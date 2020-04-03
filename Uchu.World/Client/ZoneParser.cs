@@ -15,32 +15,36 @@ namespace Uchu.World.Client
 {
     public class ZoneParser
     {
-        private readonly IFileResources _resources;
+        private IFileResources Resources { get; }
 
-        public Dictionary<ZoneId, ZoneInfo> Zones { get; }
+        private ResourceConfiguration Configuration { get; }
 
-        public ZoneParser(IFileResources resources)
+        private Dictionary<ZoneId, ZoneInfo> Zones { get; }
+
+        public ZoneParser(IFileResources resources, ResourceConfiguration configuration)
         {
-            _resources = resources;
+            Resources = resources;
+
+            Configuration = configuration;
 
             Zones = new Dictionary<ZoneId, ZoneInfo>();
         }
 
-        public async Task<ZoneInfo> LoadZoneDataAsync(ZoneId seek)
+        public async Task<ZoneInfo> LoadZoneDataAsync(ZoneId zoneId)
         {
-            if (Zones.TryGetValue(seek, out var info))
+            if (Zones.TryGetValue(zoneId, out var info))
                 return info;
 
             await using var cdClient = new CdClientContext();
 
-            var entry = await cdClient.ZoneTableTable.FirstOrDefaultAsync(z => z.ZoneID == seek);
+            var entry = await cdClient.ZoneTableTable.FirstOrDefaultAsync(z => z.ZoneID == zoneId);
 
             if (entry == default)
             {
-                throw new KeyNotFoundException($"ZoneId {seek} not found.");
+                throw new KeyNotFoundException($"ZoneId {zoneId} not found.");
             }
 
-            await using var stream = _resources.GetStream(Path.Combine("maps", entry.ZoneName));
+            await using var stream = Resources.GetStream(Path.Combine(Configuration.Maps, entry.ZoneName));
 
             var luz = new LuzFile();
 
@@ -48,13 +52,13 @@ namespace Uchu.World.Client
 
             luz.Deserialize(reader);
 
-            var path = Path.Combine("maps", Path.GetDirectoryName(entry.ZoneName)).ToLower();
+            var path = Path.Combine(Configuration.Maps, Path.GetDirectoryName(entry.ZoneName)).ToLower();
 
             var lvlFiles = new List<LvlFile>();
 
             foreach (var scene in luz.Scenes)
             {
-                await using var sceneStream = _resources.GetStream(Path.Combine(path, scene.FileName));
+                await using var sceneStream = Resources.GetStream(Path.Combine(path, scene.FileName));
 
                 using var sceneReader = new BitReader(sceneStream);
 
@@ -74,7 +78,7 @@ namespace Uchu.World.Client
                 }
             }
 
-            var terrainStream = _resources.GetStream(Path.Combine(path, luz.TerrainFileName));
+            var terrainStream = Resources.GetStream(Path.Combine(path, luz.TerrainFileName));
 
             using var terrainReader = new BitReader(terrainStream);
 
@@ -82,7 +86,7 @@ namespace Uchu.World.Client
 
             terrain.Deserialize(terrainReader);
 
-            var triggers = await TriggerDictionary.FromDirectoryAsync(Path.Combine(_resources.RootPath, path));
+            var triggers = await TriggerDictionary.FromDirectoryAsync(Path.Combine(Resources.Root, path));
 
             Logger.Information($"Parsed: {(ZoneId) luz.WorldId}");
 

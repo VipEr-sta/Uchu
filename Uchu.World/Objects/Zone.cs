@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -28,22 +27,43 @@ namespace Uchu.World
 
         private const int TicksPerSecondLimit = 20;
 
+        private long _passedTickTime;
+        private bool _running;
+        private int _ticks;
+
+        public Zone(ZoneInfo zoneInfo, Server server, ushort instanceId, uint cloneId)
+        {
+            Zone = this;
+            ZoneInfo = zoneInfo;
+            Server = server;
+            InstanceId = instanceId;
+            CloneId = cloneId;
+
+            ScriptManager = new ScriptManager(this);
+            ManagedScriptEngine = new ManagedScriptEngine();
+            UpdatedObjects = new List<UpdatedObject>();
+            ManagedObjects = new List<Object>();
+            SpawnedObjects = new List<GameObject>();
+
+            Listen(OnDestroyed, () => { _running = false; });
+        }
+
         //
         // Zone info
         //
 
         public uint CloneId { get; }
-        
+
         public ushort InstanceId { get; }
 
         public ZoneInfo ZoneInfo { get; }
-        
+
         public new Server Server { get; }
-        
+
         public uint Checksum { get; private set; }
-        
+
         public bool Loaded { get; private set; }
-        
+
         public NavMeshManager NavMeshManager { get; private set; }
 
         //
@@ -51,7 +71,7 @@ namespace Uchu.World
         //
 
         private List<Object> ManagedObjects { get; }
-        
+
         private List<GameObject> SpawnedObjects { get; }
 
         //
@@ -61,14 +81,15 @@ namespace Uchu.World
         public Object[] Objects => ManagedObjects.ToArray();
 
         public GameObject[] GameObjects => Objects.OfType<GameObject>().ToArray();
+        
         public Player[] Players => Objects.OfType<Player>().ToArray();
 
         public GameObject[] Spawned => SpawnedObjects.ToArray();
-        
+
         public ZoneId ZoneId { get; private set; }
-        
+
         public Vector3 SpawnPosition { get; private set; }
-        
+
         public Quaternion SpawnRotation { get; private set; }
 
         //
@@ -76,14 +97,13 @@ namespace Uchu.World
         //
 
         public float DeltaTime { get; private set; }
-        private long _passedTickTime;
-        private bool _running;
-        private int _ticks;
+        
         public ScriptManager ScriptManager { get; }
+        
         public ManagedScriptEngine ManagedScriptEngine { get; }
 
         private List<UpdatedObject> UpdatedObjects { get; }
-        
+
         //
         // Events
         //
@@ -93,74 +113,53 @@ namespace Uchu.World
         public Event<Object> OnObject { get; } = new Event<Object>();
 
         public AsyncEvent OnTick { get; } = new AsyncEvent();
-        
+
         public AsyncEvent<Player, string> OnChatMessage { get; } = new AsyncEvent<Player, string>();
-
-        public Zone(ZoneInfo zoneInfo, Server server, ushort instanceId = default, uint cloneId = default)
-        {
-            Zone = this;
-            ZoneInfo = zoneInfo;
-            Server = server;
-            InstanceId = instanceId;
-            CloneId = cloneId;
-            
-            ScriptManager = new ScriptManager(this);
-            ManagedScriptEngine = new ManagedScriptEngine();
-            UpdatedObjects = new List<UpdatedObject>();
-            ManagedObjects = new List<Object>();
-            SpawnedObjects = new List<GameObject>();
-
-            Listen(OnDestroyed,() => { _running = false; });
-        }
 
         #region Initializing
 
         public async Task<Task> InitializeAsync()
         {
             Checksum = ZoneInfo.LuzFile.GenerateChecksum(ZoneInfo.LvlFiles);
-            
+
             Logger.Information($"Checksum: 0x{Checksum:X}");
-            
+
             Logger.Information($"Collecting objects for {ZoneId}");
 
             var objects = new List<LevelObjectTemplate>();
 
             foreach (var lvlFile in ZoneInfo.LvlFiles.Where(lvlFile => lvlFile.LevelObjects?.Templates != default))
-            {
                 objects.AddRange(lvlFile.LevelObjects.Templates);
-            }
 
             Logger.Information($"Loading {objects.Count} objects for {ZoneId}");
 
             var tasks = new List<Task>();
 
-            NavMeshManager = new NavMeshManager(this, Server.Config.GamePlay.PathFinding);
+            NavMeshManager = new NavMeshManager(this, Server.Configuration.GamePlayConfiguration.PathFinding);
 
             if (NavMeshManager.Enabled)
             {
                 Logger.Information("Generating navigation way points.");
 
                 await NavMeshManager.GeneratePointsAsync();
-            
+
                 Logger.Information("Finished generating navigation way points.");
             }
 
             ZoneId = (ZoneId) ZoneInfo.LuzFile.WorldId;
 
             SpawnPosition = ZoneInfo.LuzFile.SpawnPoint;
-            
+
             SpawnRotation = ZoneInfo.LuzFile.SpawnRotation;
 
-            ZoneInfo.LvlFiles = new List<LvlFile>();
+            ZoneInfo.LvlFiles.Clear();
 
             ZoneInfo.TerrainFile = default;
-
-            GC.Collect();
 
             foreach (var levelObject in objects)
             {
                 Logger.Information($"Loading {levelObject.Lot}");
-                
+
                 var task = Task.Run(() =>
                 {
                     try
@@ -205,24 +204,21 @@ namespace Uchu.World
             //
 
             await ScriptManager.LoadDefaultScriptsAsync();
-            
+
             foreach (var scriptPack in ScriptManager.ScriptPacks)
-                
-            {
                 try
                 {
                     Logger.Information($"Running: {scriptPack.Name}");
-                
+
                     await scriptPack.LoadAsync();
                 }
                 catch (Exception e)
                 {
                     Logger.Information(e);
                 }
-            }
-            
+
             Loaded = true;
-            
+
             objects.Clear();
 
             return ExecuteUpdateAsync();
@@ -237,16 +233,11 @@ namespace Uchu.World
             if (levelObject.LegoInfo.TryGetValue("loadSrvrOnly", out var serverOnly) && (bool) serverOnly ||
                 levelObject.LegoInfo.TryGetValue("carver_only", out var carverOnly) && (bool) carverOnly ||
                 levelObject.LegoInfo.TryGetValue("renderDisabled", out var disabled) && (bool) disabled)
-            {
                 obj.Layer = StandardLayer.Hidden;
-            }
-            else if (!obj.TryGetComponent(out spawner))
-            {
-                obj.Layer = StandardLayer.Hidden;
-            }
+            else if (!obj.TryGetComponent(out spawner)) obj.Layer = StandardLayer.Hidden;
 
             Start(obj);
-            
+
             //
             // Only spawns should get constructed on the client.
             //
@@ -269,9 +260,9 @@ namespace Uchu.World
                 Position = w.Position,
                 Rotation = Quaternion.Identity
             }).ToList();
-            
+
             Start(obj);
-            
+
             spawner.SpawnCluster();
         }
 
@@ -343,17 +334,14 @@ namespace Uchu.World
             lock (ManagedObjects)
             {
                 if (ManagedObjects.Contains(obj)) return;
-            
+
                 OnObject.Invoke(obj);
 
                 ManagedObjects.Add(obj);
 
                 if (!(obj is GameObject gameObject)) return;
-                
-                if ((gameObject.Id.Flags & ObjectIdFlags.Spawned) != 0)
-                {
-                    SpawnedObjects.Add(gameObject);
-                }
+
+                if ((gameObject.Id.Flags & ObjectIdFlags.Spawned) != 0) SpawnedObjects.Add(gameObject);
             }
         }
 
@@ -362,19 +350,15 @@ namespace Uchu.World
             lock (ManagedObjects)
             {
                 if (!ManagedObjects.Contains(obj)) return;
-                
+
                 ManagedObjects.Remove(obj);
 
                 if (obj is GameObject gameObject)
-                {
                     if ((gameObject.Id.Flags & ObjectIdFlags.Spawned) != 0)
-                    {
                         SpawnedObjects.Remove(gameObject);
-                    }
-                }
 
                 var updated = UpdatedObjects.FirstOrDefault(u => u.Associate == obj);
-                
+
                 if (updated == default) return;
 
                 UpdatedObjects.Remove(updated);
@@ -466,7 +450,7 @@ namespace Uchu.World
         #endregion
 
         #region Debug
-        
+
         internal static void SaveCreation(GameObject gameObject, IEnumerable<Player> recipients, string path)
         {
             foreach (var recipient in recipients)
@@ -490,7 +474,7 @@ namespace Uchu.World
                 File.WriteAllBytes(Path.Combine(gameObject.Server.MasterPath, path), content);
             }
         }
-        
+
         internal static void SaveSerialization(GameObject gameObject, IEnumerable<Player> recipients, string path)
         {
             foreach (var recipient in recipients)
@@ -513,7 +497,7 @@ namespace Uchu.World
         }
 
         #endregion
-        
+
         #region Runtime
 
         private Task ExecuteUpdateAsync()
@@ -543,25 +527,24 @@ namespace Uchu.World
                     if (Players.Length == 0)
                     {
                         await Task.Delay(1000);
-                        
+
                         continue;
                     }
 
                     if (_ticks >= TicksPerSecondLimit) continue;
 
                     var start = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-                    
+
                     await Task.Delay(1000 / TicksPerSecondLimit);
 
                     foreach (var updatedObject in UpdatedObjects.ToArray())
                     {
                         if (updatedObject.Associate is GameObject gameObject)
-                        {
-                            if (Players.All(p => !p.Perspective.LoadedObjects.Contains(gameObject))) continue;
-                        }
+                            if (Players.All(p => !p.Perspective.LoadedObjects.Contains(gameObject)))
+                                continue;
 
                         if (updatedObject.Frequency != ++updatedObject.Ticks) continue;
-                        
+
                         updatedObject.Ticks = 0;
 
                         try
@@ -594,15 +577,15 @@ namespace Uchu.World
                 Frequency = frequency
             });
         }
-        
+
         private class UpdatedObject
         {
             public Object Associate { get; set; }
-            
+
             public Func<Task> Delegate { get; set; }
-            
+
             public int Frequency { get; set; }
-            
+
             public int Ticks { get; set; }
         }
 
