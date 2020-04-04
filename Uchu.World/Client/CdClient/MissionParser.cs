@@ -56,8 +56,6 @@ namespace Uchu.World.Client
         {
             if (string.IsNullOrWhiteSpace(missions)) return true;
 
-            Logger.Information($"Pre: {missions}");
-
             missions = missions.Replace(" ", "");
 
             var cur = new StringBuilder();

@@ -10,10 +10,7 @@ namespace Uchu.World
     [RequireComponent(typeof(Stats))]
     public class DestructibleComponent : ReplicaComponent
     {
-        private readonly Random _random;
-
-        private Core.Client.DestructibleComponent _cdClientComponent;
-        private Stats _stats;
+        private Stats Stats { get; set; }
 
         public override ComponentId Id => ComponentId.DestructibleComponent;
 
@@ -27,14 +24,12 @@ namespace Uchu.World
         /// <summary>
         ///     Killer, Loot Owner
         /// </summary>
-        public readonly Event<GameObject, Player> OnSmashed = new Event<GameObject, Player>();
+        public Event<GameObject, Player> OnSmashed { get; } = new Event<GameObject, Player>();
 
-        public readonly Event OnResurrect = new Event();
+        public Event OnResurrect { get; } = new Event();
 
         protected DestructibleComponent()
         {
-            _random = new Random();
-            
             Listen(OnStart, () =>
             {
                 if (GameObject.Settings.TryGetValue("respawn", out var resTimer))
@@ -50,40 +45,25 @@ namespace Uchu.World
 
                 GameObject.Layer = StandardLayer.Smashable;
 
-                using (var cdClient = new CdClientContext())
+                GameObject.AddComponent<LootContainerComponent>();
+
+                Stats = GameObject.GetComponent<Stats>();
+
+                Stats.HasStats = false;
+
+                Listen(Stats.OnDeath, async () =>
                 {
-                    var entry = GameObject.Lot.GetComponentId(ComponentId.DestructibleComponent);
-
-                    _cdClientComponent = cdClient.DestructibleComponentTable.FirstOrDefault(c => c.Id == entry);
-
-                    if (_cdClientComponent == default)
-                        Logger.Error($"{GameObject} has a corrupt Destructible Component of id: {entry}");
-                }
-
-                foreach (var stats in GameObject.GetComponents<Stats>()) stats.HasStats = false;
-                
-                if (GameObject.TryGetComponent(out _stats))
-                {
-                    Listen(_stats.OnDeath, () =>
-                    {
-                        Logger.Debug($"LATEST: {_stats.LatestDamageSource}");
-                        
-                        Smash(
-                            _stats.LatestDamageSource,
-                            _stats.LatestDamageSource is Player player ? player : default
-                        );
-                    });
-                    
-                    return;
-                }
-                
-                Logger.Error($"{GameObject} has a {nameof(DestructibleComponent)} without a {nameof(Stats)} component.");
+                    await SmashAsync(
+                        Stats.LatestDamageSource,
+                        Stats.LatestDamageSource is Player player ? player : default
+                    );
+                });
             });
-            
+
             Listen(OnDestroyed, () =>
             {
                 OnResurrect.Clear();
-                
+
                 OnSmashed.Clear();
             });
         }
@@ -92,7 +72,7 @@ namespace Uchu.World
         {
             writer.WriteBit(false);
             writer.WriteBit(false);
-            
+
             GameObject.GetComponent<Stats>().Construct(writer);
         }
 
@@ -101,45 +81,42 @@ namespace Uchu.World
             GameObject.GetComponent<Stats>().Serialize(writer);
         }
 
-        public void Smash(GameObject smasher, Player lootOwner = default, string animation = default)
+        public async Task SmashAsync(GameObject smasher, Player owner = default, string animation = default)
         {
             if (!Alive) return;
 
-            lootOwner ??= smasher as Player;
+            Alive = false;
 
-            if (lootOwner != default)
+            owner ??= smasher as Player;
+
+            if (owner != null)
             {
-                Task.Run(async () =>
-                {
-                    var missionInventoryComponent = lootOwner.GetComponent<MissionInventoryComponent>();
-                    
-                    if (missionInventoryComponent == default) return;
-                    
-                    await missionInventoryComponent.SmashAsync(GameObject.Lot);
-                });
+                var missionInventoryComponent = owner.GetComponent<MissionInventoryComponent>();
+
+                if (missionInventoryComponent == default) return;
+
+                await missionInventoryComponent.SmashAsync(GameObject.Lot);
             }
 
-            Alive = false;
-            
             Zone.BroadcastMessage(new DieMessage
             {
                 Associate = GameObject,
                 DeathType = animation ?? "",
                 Killer = smasher,
                 SpawnLoot = false,
-                LootOwner = lootOwner ?? GameObject
+                LootOwner = owner ?? GameObject
             });
-            
-            if (As<Player>() != null)
+
+            if (GameObject is Player)
             {
                 //
                 // Player
                 //
-                
+
                 var coinToDrop = Math.Min((long) Math.Round(As<Player>().Currency * 0.1), 10000);
                 As<Player>().Currency -= coinToDrop;
 
-                InstancingUtil.Currency((int) coinToDrop, lootOwner, lootOwner, Transform.Position);
+                InstancingUtil.Currency((int) coinToDrop, owner, owner, Transform.Position);
 
                 return;
             }
@@ -148,93 +125,71 @@ namespace Uchu.World
             // Normal Smashable
             //
 
-            if (lootOwner == default)
+            if (owner == null)
             {
                 OnSmashed.Invoke(smasher, default);
-                
+
                 return;
             }
 
             GameObject.Layer -= StandardLayer.Smashable;
             GameObject.Layer += StandardLayer.Hidden;
 
+            InitializeRespawn();
+
+            var container = GameObject.GetComponent<LootContainerComponent>();
+
+            await container.CollectDetailsAsync();
+
+            foreach (var lot in container.GenerateLootYields())
+            {
+                var drop = InstancingUtil.Loot(lot, owner, GameObject, Transform.Position);
+
+                Start(drop);
+            }
+
+            var currency = container.GenerateCurrencyYields();
+
+            if (currency > 0)
+            {
+                InstancingUtil.Currency(currency, owner, GameObject, Transform.Position);
+            }
+
+            OnSmashed.Invoke(smasher, owner);
+        }
+
+        private void InitializeRespawn()
+        {
             Task.Run(async () =>
             {
                 await Task.Delay((int) (ResurrectTime * 1000));
-                
-                //
-                // Re-Spawn Smashable 
-                //
 
-                Alive = true;
-                
-                GameObject.Layer += StandardLayer.Smashable;
-                GameObject.Layer -= StandardLayer.Hidden;
-
-                _stats.Health = _stats.MaxHealth;
+                Resurrect();
             });
-
-            using var cdClient = new CdClientContext();
-            var matrices = cdClient.LootMatrixTable.Where(l =>
-                l.LootMatrixIndex == _cdClientComponent.LootMatrixIndex
-            ).ToArray();
-
-            foreach (var matrix in matrices)
-            {
-                var count = _random.Next(matrix.MinToDrop ?? 0, matrix.MaxToDrop ?? 0);
-
-                var items = cdClient.LootTableTable.Where(t => t.LootTableIndex == matrix.LootTableIndex).ToList();
-                
-                for (var i = 0; i < count; i++)
-                {
-                    if (items.Count == default) break;
-                    
-                    var proc = _random.NextDouble();
-
-                    if (!(proc <= matrix.Percent)) continue;
-
-                    var item = items[_random.Next(0, items.Count)];
-                    items.Remove(item);
-
-                    if (item.Itemid == null) continue;
-
-                    var drop = InstancingUtil.Loot(item.Itemid ?? 0, lootOwner, GameObject, Transform.Position);
-                    
-                    Start(drop);
-                }
-            }
-
-            var currencies = cdClient.CurrencyTableTable.Where(
-                c => c.CurrencyIndex == _cdClientComponent.CurrencyIndex
-            );
-
-            foreach (var currency in currencies)
-            {
-                if (currency.Npcminlevel > _cdClientComponent.Level) continue;
-
-                var coinToDrop = _random.Next(currency.Minvalue ?? 0, currency.Maxvalue ?? 0);
-
-                InstancingUtil.Currency(coinToDrop, lootOwner, GameObject, Transform.Position);
-            }
-
-            OnSmashed.Invoke(smasher, lootOwner);
         }
 
         public void Resurrect()
         {
-            if (As<Player>() != null)
+            Alive = true;
+
+            if (GameObject is Player)
             {
-                Alive = true;
-                
                 Zone.BroadcastMessage(new ResurrectMessage
                 {
                     Associate = As<Player>()
                 });
+
+                Stats.Health = Math.Min(Stats.MaxHealth, 4);
+            }
+            else
+            {
+                Stats.Health = Stats.MaxHealth;
+
+                GameObject.Layer += StandardLayer.Smashable;
+                GameObject.Layer -= StandardLayer.Hidden;
             }
 
             OnResurrect.Invoke();
-            
-            _stats.Health = Math.Min(_stats.MaxHealth, 4);
         }
     }
 }

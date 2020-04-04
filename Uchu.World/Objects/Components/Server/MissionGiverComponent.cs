@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using Uchu.Core;
 using Uchu.Core.Client;
 using Uchu.World.Client;
@@ -17,9 +19,9 @@ namespace Uchu.World
 
         protected MissionGiverComponent()
         {
-            Listen(OnStart, () =>
+            Listen(OnStart, async () =>
             {
-                CollectMissions();
+                await CollectMissionsAsync();
 
                 Listen(GameObject.OnInteract, OfferMission);
             });
@@ -27,13 +29,13 @@ namespace Uchu.World
 
         public (Missions, MissionNPCComponent)[] Missions { get; set; }
 
-        private void CollectMissions()
+        private async Task CollectMissionsAsync()
         {
-            using (var ctx = new CdClientContext())
+            await using (var ctx = new CdClientContext())
             {
-                var components = ctx.ComponentsRegistryTable.Where(
+                var components = await ctx.ComponentsRegistryTable.Where(
                     c => c.Id == GameObject.Lot && c.Componenttype == (int) ComponentId.MissionNPCComponent
-                ).ToArray();
+                ).ToArrayAsync();
 
                 var missionComponents = components.SelectMany(
                     component => ctx.MissionNPCComponentTable.Where(m => m.Id == component.Componentid)
@@ -51,6 +53,8 @@ namespace Uchu.World
                         continue;
                     }
                     
+                    if (quest.Definedtype == "Hidden" || quest.Definedsubtype == "Hidden") continue;
+                    
                     missions.Add((quest, npcComponent));
                 }
 
@@ -66,8 +70,6 @@ namespace Uchu.World
         {
             var missionInventory = player.GetComponent<MissionInventoryComponent>();
 
-            player.SendChatMessage($"\n\n\nInteracting with {GameObject.ClientName} [{Missions.Length}]\n");
-
             try
             {
                 foreach (var (mission, component) in Missions)
@@ -78,9 +80,7 @@ namespace Uchu.World
                     //
 
                     var playerMissions = missionInventory.GetMissions();
-
-                    player.SendChatMessage($"Checking: {mission.Id}");
-
+                    
                     // Get the quest id.
                     if (mission.Id == default) continue;
                     var questId = mission.Id.Value;
@@ -103,8 +103,6 @@ namespace Uchu.World
 
                         if (missionState == MissionState.ReadyToComplete)
                         {
-                            player.SendChatMessage($"Can complete: {mission.Id}");
-
                             //
                             // Offer mission hand in to the player.
                             //
@@ -164,18 +162,11 @@ namespace Uchu.World
                     // Check if player has completed the required missions to take on this new mission.
                     //
 
-                    foreach (var completedMission in missionInventory.GetCompletedMissions())
-                    {
-                        player.SendChatMessage($"HAS: {completedMission.MissionId}");
-                    }
-                    
                     var hasPrerequisite = MissionParser.CheckPrerequiredMissions(
                         mission.PrereqMissionID,
                         missionInventory.GetCompletedMissions()
                     );
-
-                    player.SendChatMessage($"Prerequisite for: {mission.Id} -> ({mission.PrereqMissionID}) -> [{hasPrerequisite}]");
-
+                    
                     if (!hasPrerequisite) continue;
 
                     //

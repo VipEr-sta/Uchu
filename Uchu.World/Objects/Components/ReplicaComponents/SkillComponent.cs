@@ -295,8 +295,6 @@ namespace Uchu.World
 
             var found = _handledSkills.TryGetValue(message.SkillHandle, out var behavior);
             
-            As<Player>().SendChatMessage($"SYNC: {message.SkillHandle} [{message.BehaviorHandle}] ; {found}");
-
             if (found)
             {
                 await behavior.SyncAsync(message.BehaviorHandle, reader, writer);

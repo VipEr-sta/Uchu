@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Uchu.Core;
 using Uchu.Core.Client;
+using Uchu.Core.Profiling;
 using Uchu.World.Client;
 using Uchu.World.MissionSystem;
 
@@ -12,7 +14,9 @@ namespace Uchu.World
 {
     public class MissionInventoryComponent : Component
     {
-        private readonly object _lock = new object();
+        private static MissionTasks[] TasksCache { get; set; }
+        
+        private static Missions[] MissionCache { get; set; }
         
         public List<MissionInstance> MissionInstances { get; private set; }
 
@@ -345,7 +349,7 @@ namespace Uchu.World
         
         // TODO: Improve
         private async Task SearchForNewAchievementsAsync<T>(MissionTaskType type, Lot lot, Func<T, Task> progress = null) where T : MissionTaskBase
-        {
+        { 
             await using var cdClient = new CdClientContext();
             
             //
@@ -354,26 +358,50 @@ namespace Uchu.World
 
             var otherTasks = new List<MissionTasks>();
 
+            if (TasksCache == null)
+            {
+                var tasks = await cdClient.MissionTasksTable.ToArrayAsync();
+
+                var missions = await cdClient.MissionsTable.ToArrayAsync();
+
+                var cache = new List<MissionTasks>();
+                
+                var missionCache = new List<Missions>();
+                
+                foreach (var task in tasks)
+                {
+                    var mission = missions.FirstOrDefault(m => m.Id == task.Id);
+                    
+                    if (mission == default) continue;
+
+                    if (mission.OfferobjectID != -1 ||
+                        mission.TargetobjectID != -1 ||
+                        (mission.IsMission ?? true) ||
+                        task.TaskType != (int) type)
+                        continue;
+
+                    cache.Add(task);
+                    
+                    if (missionCache.Contains(mission)) continue;
+
+                    missionCache.Add(mission);
+                }
+
+                TasksCache = cache.ToArray();
+
+                MissionCache = missionCache.ToArray();
+            }
+            
             // ReSharper disable once LoopCanBeConvertedToQuery
-            foreach (var missionTask in cdClient.MissionTasksTable)
+            foreach (var missionTask in TasksCache)
                 if (MissionParser.GetTargets(missionTask).Contains(lot))
                     otherTasks.Add(missionTask);
 
             foreach (var task in otherTasks)
             {
-                var mission = await cdClient.MissionsTable.FirstOrDefaultAsync(m => m.Id == task.Id);
+                var mission = MissionCache.FirstOrDefault(m => m.Id == task.Id);
 
                 if (mission == default) continue;
-                
-                //
-                // Check if mission is an achievement and has a task of the correct type.
-                //
-
-                if (mission.OfferobjectID != -1 ||
-                    mission.TargetobjectID != -1 ||
-                    (mission.IsMission ?? true) ||
-                    task.TaskType != (int) type)
-                    continue;
 
                 //
                 // Get the mission on the character. If present.

@@ -59,57 +59,24 @@ namespace Uchu.World
             });
         }
 
-        public async Task DropLootAsync(Player lootOwner)
+        public async Task DropLootAsync(Player owner)
         {
-            await using var cdClient = new CdClientContext();
-            
-            var matrices = cdClient.LootMatrixTable.Where(l =>
-                Rewards.Any(r => r.LootMatrixIndex == l.LootMatrixIndex)
-            ).ToArray();
+            var container = GameObject.AddComponent<LootContainerComponent>();
 
-            foreach (var matrix in matrices)
+            await container.CollectDetailsAsync();
+
+            foreach (var lot in container.GenerateLootYields())
             {
-                var count = _random.Next(matrix.MinToDrop ?? 0, matrix.MaxToDrop ?? 0);
+                var drop = InstancingUtil.Loot(lot, owner, GameObject, Transform.Position);
 
-                var items = cdClient.LootTableTable.Where(t => t.LootTableIndex == matrix.LootTableIndex).ToList();
-                
-                for (var i = 0; i < count; i++)
-                {
-                    if (items.Count == default) break;
-                    
-                    var proc = _random.NextDouble();
-
-                    if (!(proc <= matrix.Percent)) continue;
-
-                    var item = items[_random.Next(0, items.Count)];
-                    items.Remove(item);
-
-                    if (item.Itemid == null) continue;
-
-                    lootOwner.SendChatMessage("Dropping activity item!!!");
-                    
-                    var drop = InstancingUtil.Loot(item.Itemid ?? 0, lootOwner, GameObject, Transform.Position);
-                    
-                    Start(drop);
-                }
+                Start(drop);
             }
 
-            foreach (var reward in Rewards)
+            var currency = container.GenerateCurrencyYields();
+
+            if (currency > 0)
             {
-                var currencies = cdClient.CurrencyTableTable.Where(c => 
-                    c.CurrencyIndex == reward.CurrencyIndex
-                );
-
-                foreach (var currency in currencies)
-                {
-                    if (currency.Npcminlevel > reward.ChallengeRating) continue;
-
-                    var coinToDrop = _random.Next(currency.Minvalue ?? 0, currency.Maxvalue ?? 0);
-                    
-                    lootOwner.SendChatMessage("Dropping activity coin!!!");
-                    
-                    InstancingUtil.Currency(coinToDrop, lootOwner, GameObject, Transform.Position);
-                }
+                InstancingUtil.Currency(currency, owner, GameObject, Transform.Position);
             }
         }
 
