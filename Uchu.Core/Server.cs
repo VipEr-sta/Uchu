@@ -60,7 +60,7 @@ namespace Uchu.Core
 
         public event Func<long, ushort, BitReader, IRakConnection, Task> GameMessageReceived;
 
-        public event Action ServerStopped;
+        public event Func<Task> ServerStopped;
 
         protected bool Running { get; private set; }
 
@@ -163,15 +163,21 @@ namespace Uchu.Core
             
             Running = true;
 
-            var tasks = new List<Task>
+            var inherited = await StartAdditionalTasksAsync().ConfigureAwait(false);
+
+            var tasks = inherited.ToList();
+            
+            tasks.AddRange(new []
             {
                 RakNetServer.RunAsync(),
                 Api.StartAsync(ApiPort)
-            };
+            });
 
-            tasks.AddRange(await StartAdditionalTasksAsync().ConfigureAwait(false));
-
+            Logger.Information($"Tracking all tasks...");
+            
             await Task.WhenAny(tasks).ConfigureAwait(false);
+            
+            Logger.Information($"Some task ended...");
 
             await StopAsync().ConfigureAwait(false);
         }

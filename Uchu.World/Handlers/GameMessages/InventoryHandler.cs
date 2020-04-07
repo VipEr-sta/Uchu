@@ -6,21 +6,19 @@ namespace Uchu.World.Handlers.GameMessages
     public class InventoryHandler : HandlerGroup
     {
         [PacketHandler]
-        public void ItemMovementHandler(MoveItemInInventoryMessage message, Player player)
+        public async Task ItemMovementHandler(MoveItemInInventoryMessage message, Player player)
         {
             if (message.DestinationInventoryType == InventoryType.Invalid)
                 message.DestinationInventoryType = message.CurrentInventoryType;
 
             if (message.Item.Inventory.ManagerComponent.GameObject != player) return;
-            
-            message.Item.Slot = (uint) message.NewSlot;
+
+            await message.Item.SetSlotAsync((uint) message.NewSlot);
         }
         
         [PacketHandler]
         public async Task ItemMoveBetweenInventoriesHandler(MoveItemBetweenInventoryTypesMessage message, Player player)
         {
-            player.SendChatMessage($"{message.Item?.Lot ?? message.Lot} {message.SourceInventory} -> {message.DestinationInventory}");
-
             await player.GetComponent<InventoryManagerComponent>().MoveItemsBetweenInventoriesAsync(
                 message.Item,
                 message.Lot,
@@ -31,15 +29,17 @@ namespace Uchu.World.Handlers.GameMessages
         }
 
         [PacketHandler]
-        public void RemoveItemHandler(RemoveItemToInventoryMessage message, Player player)
+        public async Task RemoveItemHandler(RemoveItemToInventoryMessage message, Player player)
         {
             if (!message.Confirmed) return;
 
             if (message.Item == default) return;
             
             var inventoryManager = player.GetComponent<InventoryManagerComponent>();
+
+            var count = await message.Item.GetCountAsync();
             
-            inventoryManager.RemoveItem(message.Item.Lot, message.Item.Count - message.TotalItems, message.InventoryType, true);
+            await inventoryManager.RemoveItemAsync(message.Item.Lot, count - message.TotalItems, message.InventoryType, true);
         }
 
         [PacketHandler]

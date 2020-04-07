@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using RakDotNet.IO;
 
 namespace Uchu.World
@@ -15,14 +16,21 @@ namespace Uchu.World
             {
                 CollectibleId = (ushort) (int) GameObject.Settings["collectible_id"];
 
-                foreach (var stats in GameObject.GetComponents<Stats>()) stats.HasStats = false;
+                foreach (var stats in GameObject.GetComponents<Stats>())
+                {
+                    stats.HasStats = false;
+                }
+                
+                return Task.CompletedTask;
             });
         }
 
         public override void Construct(BitWriter writer)
         {
             if (!GameObject.TryGetComponent<DestructibleComponent>(out _))
+            {
                 GameObject.GetComponent<Stats>().Construct(writer);
+            }
 
             Serialize(writer);
         }
@@ -30,7 +38,9 @@ namespace Uchu.World
         public override void Serialize(BitWriter writer)
         {
             if (!GameObject.TryGetComponent<DestructibleComponent>(out _))
+            {
                 GameObject.GetComponent<Stats>().Serialize(writer);
+            }
 
             writer.Write(CollectibleId);
         }

@@ -19,7 +19,7 @@ namespace Uchu.StandardScripts.General
 
                     await using var cdClient = new CdClientContext();
 
-                    var id = launchpad.GameObject.Lot.GetComponentId(ComponentId.RocketLaunchComponent);
+                    var id = await launchpad.GameObject.Lot.GetComponentIdAsync(ComponentId.RocketLaunchComponent);
 
                     var launchpadComponent = await cdClient.RocketLaunchpadControlComponentTable.FirstOrDefaultAsync(
                         r => r.Id == id

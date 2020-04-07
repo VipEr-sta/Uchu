@@ -24,7 +24,7 @@ namespace Uchu.StandardScripts.VentureExplorer
             {
                 if (!gameObject.TryGetComponent<DestructibleComponent>(out var destructibleComponent)) continue;
                 
-                Listen(destructibleComponent.OnSmashed, (killer, owner) =>
+                Listen(destructibleComponent.OnSmashed, async (killer, owner) =>
                 {
                     if (owner.GetComponent<Stats>().MaxImagination == default) return;
 
@@ -34,9 +34,14 @@ namespace Uchu.StandardScripts.VentureExplorer
                     
                     for (var i = 0; i < _random.Next(1, 3); i++)
                     {
-                        var loot = InstancingUtil.Loot(Lot.Imagination, owner, gameObject, gameObject.Transform.Position);
+                        var loot = await InstancingUtilities.InstantiateLootAsync(
+                            Lot.Imagination,
+                            owner,
+                            gameObject,
+                            gameObject.Transform.Position
+                        );
 
-                        Start(loot);
+                        await StartAsync(loot);
                     }
 
                     var random = _random.Next(0, 26);
@@ -47,17 +52,17 @@ namespace Uchu.StandardScripts.VentureExplorer
                     // Spawn crate chicken
                     //
                     
-                    var chicken = GameObject.Instantiate(Zone, 8114, gameObject.Transform.Position);
+                    var chicken = await GameObject.InstantiateAsync(Zone, 8114, gameObject.Transform.Position);
 
-                    Start(chicken);
+                    await StartAsync(chicken);
 
                     Construct(chicken);
 
-                    Task.Run(async () =>
+                    var _ = Task.Run(async () =>
                     {
                         await Task.Delay(4000);
 
-                        Destroy(chicken);
+                        await DestroyAsync(chicken);
                     });
                 });
             }

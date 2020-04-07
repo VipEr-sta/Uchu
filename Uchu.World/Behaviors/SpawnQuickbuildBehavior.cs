@@ -41,7 +41,7 @@ namespace Uchu.World.Behaviors
         {
             await base.ExecuteAsync(context, branchContext);
             
-            var quickBuild = GameObject.Instantiate(
+            var quickBuild = await GameObject.InstantiateAsync(
                 context.Associate.Zone,
                 Lot,
                 context.Associate.Transform.Position,
@@ -50,7 +50,7 @@ namespace Uchu.World.Behaviors
 
             quickBuild.Transform.Position = context.Associate.Transform.Position;
 
-            Object.Start(quickBuild);
+            await Object.StartAsync(quickBuild);
             GameObject.Construct(quickBuild);
             GameObject.Serialize(quickBuild);
 
@@ -58,7 +58,7 @@ namespace Uchu.World.Behaviors
             {
                 await Task.Delay(branchContext.Duration);
 
-                Object.Destroy(quickBuild);
+                await Object.DestroyAsync(quickBuild);
             });
         }
     }

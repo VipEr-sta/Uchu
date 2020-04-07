@@ -48,14 +48,16 @@ namespace Uchu.World
 
         public void MessageOfferMission(int missionId, GameObject missionGiver)
         {
-            As<Player>().Message(new OfferMissionMessage
+            var player = (Player) GameObject;
+            
+            player.Message(new OfferMissionMessage
             {
                 Associate = GameObject,
                 MissionId = missionId,
                 QuestGiver = missionGiver
             });
             
-            As<Player>().Message(new OfferMissionMessage
+            player.Message(new OfferMissionMessage
             {
                 Associate = missionGiver,
                 MissionId = missionId,

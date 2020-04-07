@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using System.Threading.Tasks;
 using InfectedRose.Lvl;
+using Microsoft.EntityFrameworkCore;
 using RakDotNet.IO;
 using Uchu.Core;
 using Uchu.Core.Client;
@@ -12,9 +14,7 @@ namespace Uchu.World
 {
     public class GameObject : Object
     {
-        private readonly List<Component> _components = new List<Component>();
-
-        private readonly List<ReplicaComponent> _replicaComponents = new List<ReplicaComponent>();
+        private List<Component> Components { get; }
         
         private Mask _layer = new Mask(StandardLayer.Default);
 
@@ -35,6 +35,39 @@ namespace Uchu.World
 
         public SpawnerComponent SpawnerObject { get; private set; }
 
+        protected GameObject()
+        {
+            Components = new List<Component>();
+            Settings = new LegoDataDictionary();
+
+            OnInteract = new AsyncEvent<Player>();
+            OnEmoteReceived = new AsyncEvent<int, Player>();
+
+            Listen(OnStart, async () =>
+            {
+                foreach (var component in Components)
+                {
+                    await StartAsync(component);
+                }
+            });
+
+            Listen(OnDestroyed, async () =>
+            {
+                OnInteract.Clear();
+                
+                OnEmoteReceived.Clear();
+                
+                await Zone.UnregisterObjectAsync(this);
+
+                foreach (var component in Components)
+                {
+                    await DestroyAsync(component);
+                }
+
+                Destruct(this);
+            });
+        }
+        
         public Mask Layer
         {
             get => _layer;
@@ -95,9 +128,9 @@ namespace Uchu.World
 
         #region Events
 
-        public Event<Player> OnInteract { get; } = new Event<Player>();
+        public AsyncEvent<Player> OnInteract { get; }
 
-        public AsyncEvent<int, Player> OnEmoteReceived { get; } = new AsyncEvent<int, Player>();
+        public AsyncEvent<int, Player> OnEmoteReceived { get; }
 
         #endregion
         
@@ -107,35 +140,12 @@ namespace Uchu.World
 
         public bool Alive => Zone?.TryGetGameObject(Id, out _) ?? false;
 
-        public ReplicaComponent[] ReplicaComponents => _replicaComponents.ToArray();
+        public IEnumerable<ReplicaComponent> ReplicaComponents => Components.OfType<ReplicaComponent>();
 
         public Player[] Viewers => Zone.Players.Where(p => p.Perspective.TryGetNetworkId(this, out _)).ToArray();
 
         #endregion
         
-        protected GameObject()
-        {
-            Settings = new LegoDataDictionary();
-            
-            Listen(OnStart, () =>
-            {
-                foreach (var component in _components.ToArray()) Start(component);
-            });
-
-            Listen(OnDestroyed, () =>
-            {
-                OnInteract.Clear();
-                
-                OnEmoteReceived.Clear();
-                
-                Zone.UnregisterObject(this);
-
-                foreach (var component in _components.ToArray()) Destroy(component);
-
-                Destruct(this);
-            });
-        }
-
         #region Operators
 
         public static implicit operator long(GameObject gameObject)
@@ -157,25 +167,32 @@ namespace Uchu.World
 
         #region Component Management
 
-        public Component AddComponent(Type type)
+        public async Task<Component> AddComponentAsync(Type type)
         {
             if (TryGetComponent(type, out var addedComponent)) return addedComponent;
             
-            if (Object.Instantiate(type, Zone) is Component component)
+            if (Instantiate(type, Zone) is Component component)
             {
                 component.GameObject = this;
 
-                _components.Add(component);
+                Components.Add(component);
 
                 var requiredComponents = type.GetCustomAttributes<RequireComponentAttribute>().ToArray();
 
-                foreach (var attribute in requiredComponents.Where(r => r.Priority)) AddComponent(attribute.Type);
+                foreach (var attribute in requiredComponents.Where(r => r.Priority))
+                {
+                    await AddComponentAsync(attribute.Type);
+                }
 
-                if (component is ReplicaComponent replicaComponent) _replicaComponents.Add(replicaComponent);
+                foreach (var attribute in requiredComponents.Where(r => !r.Priority))
+                {
+                    await AddComponentAsync(attribute.Type);
+                }
 
-                foreach (var attribute in requiredComponents.Where(r => !r.Priority)) AddComponent(attribute.Type);
-
-                Start(component);
+                if (Started)
+                {
+                    await StartAsync(component);
+                }
 
                 return component;
             }
@@ -184,34 +201,34 @@ namespace Uchu.World
             return null;
         }
 
-        public T AddComponent<T>() where T : Component
+        public async Task<T> AddComponentAsync<T>() where T : Component
         {
-            return AddComponent(typeof(T)) as T;
+            return await AddComponentAsync(typeof(T)) as T;
         }
 
         public Component GetComponent(Type type)
         {
-            return _components.FirstOrDefault(c => c.GetType() == type);
+            return Components.FirstOrDefault(c => c.GetType() == type);
         }
 
         public Component[] GetComponents(Type type)
         {
-            return _components.Where(c => c.GetType() == type).ToArray();
+            return Components.Where(c => c.GetType() == type).ToArray();
         }
 
         public T GetComponent<T>() where T : Component
         {
-            return _components.FirstOrDefault(c => c is T) as T;
+            return Components.FirstOrDefault(c => c is T) as T;
         }
 
         public T[] GetComponents<T>() where T : Component
         {
-            return _components.OfType<T>().ToArray();
+            return Components.OfType<T>().ToArray();
         }
 
         public Component[] GetAllComponents()
         {
-            return _components.ToArray();
+            return Components.ToArray();
         }
 
         public bool TryGetComponent(Type type, out Component result)
@@ -238,23 +255,29 @@ namespace Uchu.World
             return result.Length != default;
         }
 
-        public void RemoveComponent(Type type)
+        public async Task RemoveComponentAsync(Type type, bool destroy = true)
         {
             var comp = GetComponent(type);
             
-            _components.Remove(comp);
+            Components.Remove(comp);
 
-            Destroy(comp);
+            if (destroy)
+            {
+                await DestroyAsync(comp);
+            }
         }
 
-        public void RemoveComponent<T>() where T : Component
+        public async Task RemoveComponentAsync<T>(bool destroy = true) where T : Component
         {
-            RemoveComponent(typeof(T));
+            await RemoveComponentAsync(typeof(T), destroy);
         }
 
-        public void RemoveComponent(Component component)
+        public async Task RemoveComponentAsync(Component component, bool destroy = true)
         {
-            if (_components.Contains(component)) RemoveComponent(component.GetType());
+            if (Components.Contains(component))
+            {
+                await RemoveComponentAsync(component.GetType(), destroy);
+            }
         }
 
         #endregion
@@ -294,13 +317,13 @@ namespace Uchu.World
 
         #region From Raw
 
-        public static GameObject Instantiate(Type type, Object parent, string name = "", Vector3 position = default,
+        public static async Task<GameObject> InstantiateAsync(Type type, Object parent, string name = "", Vector3 position = default,
             Quaternion rotation = default, float scale = 1, ObjectId objectId = default, Lot lot = default,
             SpawnerComponent spawner = default)
         {
             if (type.IsSubclassOf(typeof(GameObject)) || type == typeof(GameObject))
             {
-                var instance = (GameObject) Object.Instantiate(type, parent.Zone);
+                var instance = (GameObject) Instantiate(type, parent.Zone);
                 
                 instance.Id = objectId == 0L ? ObjectId.Standalone : objectId;
 
@@ -308,15 +331,19 @@ namespace Uchu.World
 
                 instance.Name = name;
 
-                using (var cdClient = new CdClientContext())
+                await using (var cdClient = new CdClientContext())
                 {
-                    var obj = cdClient.ObjectsTable.FirstOrDefault(o => o.Id == lot);
+                    var obj = await cdClient.ObjectsTable.FirstOrDefaultAsync(
+                        o => o.Id == lot
+                    );
+                    
                     instance.ClientName = obj?.Name;
                 }
 
                 instance.SpawnerObject = spawner;
 
-                var transform = instance.AddComponent<Transform>();
+                var transform = await instance.AddComponentAsync<Transform>();
+                
                 transform.Position = position;
                 transform.Rotation = rotation;
                 transform.Scale = scale;
@@ -341,29 +368,29 @@ namespace Uchu.World
             return null;
         }
 
-        public static T Instantiate<T>(Object parent, string name = "", Vector3 position = default,
+        public static async Task<T> InstantiateAsync<T>(Object parent, string name = "", Vector3 position = default,
             Quaternion rotation = default, float scale = 1, ObjectId objectId = default, Lot lot = default,
             SpawnerComponent spawner = default)
             where T : GameObject
         {
-            return Instantiate(typeof(T), parent, name, position, rotation, scale, objectId, lot, spawner) as T;
+            return await InstantiateAsync(typeof(T), parent, name, position, rotation, scale, objectId, lot, spawner) as T;
         }
         
-        public static GameObject Instantiate(Object parent, string name = "", Vector3 position = default,
+        public static async Task<GameObject> InstantiateAsync(Object parent, string name = "", Vector3 position = default,
             Quaternion rotation = default, float scale = 1, ObjectId objectId = default, Lot lot = default,
             SpawnerComponent spawner = default)
         {
-            return Instantiate(typeof(GameObject), parent, name, position, rotation, scale, objectId, lot, spawner);
+            return await InstantiateAsync(typeof(GameObject), parent, name, position, rotation, scale, objectId, lot, spawner);
         }
         
         #endregion
 
         #region From Template
 
-        public static GameObject Instantiate(Type type, Object parent, Lot lot, Vector3 position = default,
+        public static async Task<GameObject> InstantiateAsync(Type type, Object parent, Lot lot, Vector3 position = default,
             Quaternion rotation = default)
         {
-            return Instantiate(type, new LevelObjectTemplate
+            return await InstantiateAsync(type, new LevelObjectTemplate
             {
                 Lot = lot,
                 Position = position,
@@ -373,23 +400,23 @@ namespace Uchu.World
             }, parent);
         }
 
-        public static T Instantiate<T>(Object parent, Lot lot, Vector3 position = default,
+        public static async Task<T> InstantiateAsync<T>(Object parent, Lot lot, Vector3 position = default,
             Quaternion rotation = default) where T : GameObject
         {
-            return Instantiate(typeof(T), parent, lot, position, rotation) as T;
+            return await InstantiateAsync(typeof(T), parent, lot, position, rotation) as T;
         }
 
-        public static GameObject Instantiate(Object parent, Lot lot, Vector3 position = default,
+        public static async Task<GameObject> InstantiateAsync(Object parent, Lot lot, Vector3 position = default,
             Quaternion rotation = default)
         {
-            return Instantiate(typeof(GameObject), parent, lot, position, rotation);
+            return await InstantiateAsync(typeof(GameObject), parent, lot, position, rotation);
         }
 
         #endregion
 
         #region From LevelObject
 
-        public static GameObject Instantiate(Type type, LevelObjectTemplate levelObject, Object parent,
+        public static async Task<GameObject> InstantiateAsync(Type type, LevelObjectTemplate levelObject, Object parent,
             SpawnerComponent spawner = default)
         {
             // ReSharper disable PossibleInvalidOperationException
@@ -399,9 +426,9 @@ namespace Uchu.World
             //
 
             if (levelObject.LegoInfo.TryGetValue("spawntemplate", out _))
-                return InstancingUtil.Spawner(levelObject, parent);
+                return await InstancingUtilities.InstantiateSpawnerAsync(levelObject, parent);
 
-            using var ctx = new CdClientContext();
+            await using var ctx = new CdClientContext();
             
             var name = levelObject.LegoInfo.TryGetValue("npcName", out var npcName) ? (string) npcName : "";
 
@@ -411,7 +438,7 @@ namespace Uchu.World
 
             var id = levelObject.ObjectId == 0 ? (long) ObjectId.FromFlags(ObjectIdFlags.Spawned | ObjectIdFlags.Client) : (long) levelObject.ObjectId;
 
-            var instance = Instantiate(
+            var instance = await InstantiateAsync(
                 type,
                 parent,
                 name,
@@ -449,7 +476,8 @@ namespace Uchu.World
                 
                 var componentType = ReplicaComponent.GetReplica((ComponentId) (int) component.Componenttype);
 
-                if (componentType != default) instance.AddComponent(componentType);
+                if (componentType != default)
+                    await instance.AddComponentAsync(componentType);
             }
 
             //
@@ -472,7 +500,7 @@ namespace Uchu.World
                 var componentType = ReplicaComponent.GetReplica((ComponentId) component.Componenttype);
 
                 if (componentType == null) Logger.Warning($"No component of ID {(ComponentId) component.Componenttype}");
-                else instance.AddComponent(componentType);
+                else await instance.AddComponentAsync(componentType);
             }
 
             //
@@ -481,21 +509,21 @@ namespace Uchu.World
 
             if (levelObject.LegoInfo.ContainsKey("trigger_id"))
             {
-                instance.AddComponent<TriggerComponent>();
+                await instance.AddComponentAsync<TriggerComponent>();
             }
 
             return instance;
         }
 
-        public static T Instantiate<T>(LevelObjectTemplate levelObject, Object parent, SpawnerComponent spawner = default)
+        public static async Task<T> InstantiateAsync<T>(LevelObjectTemplate levelObject, Object parent, SpawnerComponent spawner = default)
             where T : GameObject
         {
-            return Instantiate(typeof(T), levelObject, parent, spawner) as T;
+            return await InstantiateAsync(typeof(T), levelObject, parent, spawner) as T;
         }
 
-        public static GameObject Instantiate(LevelObjectTemplate levelObject, Object parent, SpawnerComponent spawner = default)
+        public static async Task<GameObject> InstantiateAsync(LevelObjectTemplate levelObject, Object parent, SpawnerComponent spawner = default)
         {
-            return Instantiate(typeof(GameObject), levelObject, parent, spawner);
+            return await InstantiateAsync(typeof(GameObject), levelObject, parent, spawner);
         }
 
         #endregion
@@ -560,7 +588,8 @@ namespace Uchu.World
             // Construct replica components.
             //
 
-            foreach (var replicaComponent in _replicaComponents) replicaComponent.Construct(writer);
+            foreach (var replicaComponent in ReplicaComponents)
+                replicaComponent.Construct(writer);
         }
 
         internal void WriteSerialize(BitWriter writer)
@@ -571,7 +600,8 @@ namespace Uchu.World
             // Serialize replica components.
             //
 
-            foreach (var replicaComponent in _replicaComponents) replicaComponent.Serialize(writer);
+            foreach (var replicaComponent in ReplicaComponents)
+                replicaComponent.Serialize(writer);
         }
 
         private void WriteHierarchy(BitWriter writer)

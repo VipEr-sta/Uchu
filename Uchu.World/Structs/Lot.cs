@@ -1,4 +1,5 @@
-using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using Uchu.Core.Client;
 
 namespace Uchu.World
@@ -47,48 +48,17 @@ namespace Uchu.World
             return Id;
         }
 
-        public Objects Object
-        {
-            get
-            {
-                using var cdClient = new CdClientContext();
-                var id = Id;
-                return cdClient.ObjectsTable.FirstOrDefault(o => o.Id == id);
-            }
-        }
-
-        public int GetComponentId(ComponentId componentType)
-        {
-            return GetComponentId((int) componentType);
-        }
-
-        public int GetComponentId(int componentType)
+        public async Task<int> GetComponentIdAsync(ComponentId type)
         {
             var id = Id;
-            using var cdClient = new CdClientContext();
-            var itemRegistryEntry = cdClient.ComponentsRegistryTable.FirstOrDefault(
-                r => r.Id == id && r.Componenttype == componentType
+            
+            await using var cdClient = new CdClientContext();
+            
+            var itemRegistryEntry = await cdClient.ComponentsRegistryTable.FirstOrDefaultAsync(
+                r => r.Id == id && r.Componenttype == (int) type
             );
 
             return itemRegistryEntry?.Componentid ?? 0;
-        }
-
-        public int[] GetComponentIds(ComponentId componentType)
-        {
-            return GetComponentIds((int) componentType);
-        }
-
-        public int[] GetComponentIds(int componentType)
-        {
-            var id = Id;
-
-            using var cdClient = new CdClientContext();
-
-            var itemRegistryEntry = cdClient.ComponentsRegistryTable.Where(
-                r => r.Id == id && r.Componenttype == componentType
-            );
-
-            return itemRegistryEntry.Select(r => r.Componentid.Value).ToArray();
         }
 
         #region Consts

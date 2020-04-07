@@ -19,24 +19,31 @@ namespace Uchu.World
     {
         private Player()
         {
+            OnFireServerEvent = new AsyncEventDictionary<string, FireServerEventMessage>();
+
+            OnLootPickup = new AsyncEvent<Lot>();
+
+            OnPositionUpdate = new AsyncEvent<Vector3, Quaternion>();
+
             Listen(OnStart, async () =>
             {
-                Connection.Disconnected += reason =>
+                Connection.Disconnected += async reason =>
                 {
                     Connection = default;
-                    
-                    Destroy(this);
-                    
-                    return Task.CompletedTask;
+
+                    await DestroyAsync(this);
                 };
 
                 if (TryGetComponent<DestructibleComponent>(out var destructibleComponent))
                 {
-                    destructibleComponent.OnResurrect.AddListener(() => { GetComponent<Stats>().Imagination = 6; });
+                    destructibleComponent.OnResurrect.AddListener(async () =>
+                    {
+                        await GetComponent<Stats>().SetImaginationAsync(6);
+                    });
                 }
-                
+
                 await using var ctx = new UchuContext();
-                
+
                 var character = await ctx.Characters
                     .Include(c => c.UnlockedEmotes)
                     .FirstAsync(c => c.Id == Id);
@@ -53,43 +60,44 @@ namespace Uchu.World
                     await CheckBannedStatusAsync();
                 }, 20);
             });
-            
+
             Listen(OnDestroyed, () =>
             {
                 OnFireServerEvent.Clear();
                 OnLootPickup.Clear();
                 OnPositionUpdate.Clear();
+
+                return Task.CompletedTask;
             });
         }
 
-        public AsyncEventDictionary<string, FireServerEventMessage> OnFireServerEvent { get; } =
-            new AsyncEventDictionary<string, FireServerEventMessage>();
+        public AsyncEventDictionary<string, FireServerEventMessage> OnFireServerEvent { get; }
 
-        public AsyncEvent<Lot> OnLootPickup { get; } = new AsyncEvent<Lot>();
+        public AsyncEvent<Lot> OnLootPickup { get; }
 
-        public AsyncEvent<Vector3, Quaternion> OnPositionUpdate { get; } = new AsyncEvent<Vector3, Quaternion>();
+        public AsyncEvent<Vector3, Quaternion> OnPositionUpdate { get; }
 
         public IRakConnection Connection { get; private set; }
 
         public Perspective Perspective { get; private set; }
 
         public long EntitledCurrency { get; set; }
-        
+
         public PlayerChatChannel ChatChannel { get; set; }
 
         public GuildGuiState GuildGuiState { get; set; }
-        
+
         public string GuildInviteName { get; set; }
 
         public int Ping => Connection.AveragePing;
-        
+
         public override string Name
         {
             get => ObjectName;
             set
             {
                 ObjectName = value;
-                
+
                 Zone.BroadcastMessage(new SetNameMessage
                 {
                     Associate = this,
@@ -106,46 +114,37 @@ namespace Uchu.World
         /// </remarks>
         public long HiddenCurrency { get; set; }
 
-        public long Currency
+        public async Task<long> GetCurrencyAsync()
         {
-            get
-            {
-                using var ctx = new UchuContext();
-                var character = ctx.Characters.First(c => c.Id == Id);
+            await using var ctx = new UchuContext();
 
-                return character.Currency;
-            }
-            set => Task.Run(async () => { await SetCurrencyAsync(value); });
+            var character = await ctx.Characters.FirstAsync(c => c.Id == Id);
+
+            return character.Currency;
         }
 
-        public long UniverseScore
+        public async Task<long> GetUniverseScoreAsync()
         {
-            get
-            {
-                using var ctx = new UchuContext();
-                var character = ctx.Characters.First(c => c.Id == Id);
+            await using var ctx = new UchuContext();
 
-                return character.UniverseScore;
-            }
-            set => Task.Run(async () => { await SetUniverseScoreAsync(value); });
+            var character = await ctx.Characters.FirstAsync(c => c.Id == Id);
+
+            return character.UniverseScore;
         }
 
-        public long Level
+        public async Task<long> GetLevelAsync()
         {
-            get
-            {
-                using var ctx = new UchuContext();
-                var character = ctx.Characters.First(c => c.Id == Id);
+            await using var ctx = new UchuContext();
 
-                return character.Level;
-            }
-            set => Task.Run(async () => { await SetLevelAsync(value); });
+            var character = await ctx.Characters.FirstAsync(c => c.Id == Id);
+
+            return character.Level;
         }
 
         public async Task<Character> GetCharacterAsync()
         {
             await using var ctx = new UchuContext();
-                
+
             return await ctx.Characters.FirstAsync(c => c.Id == Id);
         }
 
@@ -158,7 +157,7 @@ namespace Uchu.World
             var user = await ctx.Users.FirstAsync(u => u.Id == character.UserId);
 
             if (!user.Banned) return;
-                
+
             try
             {
                 await Connection.CloseAsync();
@@ -179,7 +178,7 @@ namespace Uchu.World
                 .ThenInclude(m => m.Tasks)
                 .ThenInclude(t => t.Values)
                 .SingleOrDefaultAsync(c => c.Id == Id);
-            
+
             var flagTaskIds = cdContext.MissionTasksTable
                 .Where(t => t.TaskType == (int) MissionTaskType.Collect)
                 .Select(t => t.Uid);
@@ -189,7 +188,7 @@ namespace Uchu.World
                 .SelectMany(m => m.Tasks
                     .Where(t => flagTaskIds.Contains(t.TaskId))
                     .SelectMany(t => t.ValueArray())).ToArray();
-            
+
             return flagValues;
         }
 
@@ -198,8 +197,8 @@ namespace Uchu.World
             //
             // Create base gameobject
             //
-            
-            var instance = Instantiate<Player>(
+
+            var instance = await InstantiateAsync<Player>(
                 zone,
                 character.Name,
                 zone.SpawnPosition,
@@ -208,17 +207,17 @@ namespace Uchu.World
                 character.Id,
                 1
             );
-            
+
             //
             // Setup layers
             //
-            
+
             instance.Layer = StandardLayer.Player;
-            
+
             var layer = StandardLayer.All;
             layer -= StandardLayer.Hidden;
             layer -= StandardLayer.Spawner;
-            
+
             instance.Perspective = new Perspective(instance);
 
             var maskFilter = instance.Perspective.AddFilter<MaskFilter>();
@@ -227,7 +226,7 @@ namespace Uchu.World
             instance.Perspective.AddFilter<RenderDistanceFilter>();
             instance.Perspective.AddFilter<FlagFilter>();
             instance.Perspective.AddFilter<ExcludeFilter>();
-            
+
             //
             // Set connection
             //
@@ -237,22 +236,24 @@ namespace Uchu.World
             //
             // Add serialized components
             //
-            
-            var controllablePhysics = instance.AddComponent<ControllablePhysicsComponent>();
-            instance.AddComponent<DestructibleComponent>();
+
+            var controllablePhysics = await instance.AddComponentAsync<ControllablePhysicsComponent>();
+
+            await instance.AddComponentAsync<DestructibleComponent>();
+
             var stats = instance.GetComponent<Stats>();
-            var characterComponent = instance.AddComponent<CharacterComponent>();
-            var inventory = instance.AddComponent<InventoryComponent>();
-            
-            instance.AddComponent<LuaScriptComponent>();
-            instance.AddComponent<SkillComponent>();
-            instance.AddComponent<RendererComponent>();
-            instance.AddComponent<PossessableOccupantComponent>();
-            
+            var characterComponent = await instance.AddComponentAsync<CharacterComponent>();
+            var inventory = await instance.AddComponentAsync<InventoryComponent>();
+
+            await instance.AddComponentAsync<LuaScriptComponent>();
+            await instance.AddComponentAsync<SkillComponent>();
+            await instance.AddComponentAsync<RendererComponent>();
+            await instance.AddComponentAsync<PossessableOccupantComponent>();
+
             controllablePhysics.HasPosition = true;
             stats.HasStats = true;
             characterComponent.Character = character;
-            
+
             //
             // Equip items
             //
@@ -266,7 +267,7 @@ namespace Uchu.World
                 foreach (var item in items)
                 {
                     if (item.ParentId != ObjectId.Invalid) continue;
-                    
+
                     await inventory.EquipAsync(new EquippedItem
                     {
                         Id = item.Id,
@@ -278,24 +279,30 @@ namespace Uchu.World
             //
             // Register player gameobject in zone
             //
+
+            Logger.Information($"Starting player");
             
-            Start(instance);
+            await StartAsync(instance);
             Construct(instance);
 
             //
             // Server Components
             //
+
+            Logger.Information("Adding server components");
             
-            instance.AddComponent<MissionInventoryComponent>();
-            instance.AddComponent<InventoryManagerComponent>();
-            instance.AddComponent<TeamPlayerComponent>();
-            instance.AddComponent<ModularBuilderComponent>();
+            await instance.AddComponentAsync<MissionInventoryComponent>();
+            await instance.AddComponentAsync<InventoryManagerComponent>();
+            await instance.AddComponentAsync<TeamPlayerComponent>();
+            await instance.AddComponentAsync<ModularBuilderComponent>();
 
             //
             // Register player as an active in zone
             //
+
+            Logger.Information($"Regestring player");
             
-            await zone.RegisterPlayer(instance);
+            await zone.RegisterPlayerAsync(instance);
 
             return instance;
         }
@@ -317,7 +324,7 @@ namespace Uchu.World
 
                 await ctx.SaveChangesAsync();
             }
-            
+
             Message(new SetEmoteLockStateMessage
             {
                 Associate = this,
@@ -342,7 +349,7 @@ namespace Uchu.World
                 var spawned = Perspective.LoadedObjects.ToArray().Contains(gameObject);
 
                 var view = Perspective.View(gameObject);
-                    
+
                 if (spawned && !view)
                 {
                     Zone.SendDestruction(gameObject, this);
@@ -362,7 +369,7 @@ namespace Uchu.World
             var spawned = Perspective.LoadedObjects.ToArray().Contains(gameObject);
 
             var view = Perspective.View(gameObject);
-                    
+
             if (spawned && !view)
             {
                 Zone.SendDestruction(gameObject, this);
@@ -376,10 +383,11 @@ namespace Uchu.World
             }
         }
 
-        public void SendChatMessage(string message, PlayerChatChannel channel = PlayerChatChannel.Debug, Player author = null, ChatChannel chatChannel = World.ChatChannel.Public)
+        public void SendChatMessage(string message, PlayerChatChannel channel = PlayerChatChannel.Debug,
+            Player author = null, ChatChannel chatChannel = World.ChatChannel.Public)
         {
             if (channel > ChatChannel) return;
-            
+
             Message(new ChatMessagePacket
             {
                 Message = $"{message}\0",
@@ -401,7 +409,7 @@ namespace Uchu.World
                 Port = (ushort) specification.Port,
                 Address = Server.GetHost()
             });
-            
+
             await using var ctx = new UchuContext();
 
             var character = await ctx.Characters.FirstAsync(c => c.Id == Id);
@@ -412,24 +420,24 @@ namespace Uchu.World
 
             return true;
         }
-        
+
         public async Task<bool> SendToWorldAsync(ZoneId zoneId)
         {
             var server = await ServerHelper.RequestWorldServerAsync(Server, zoneId);
-            
+
             if (server == default)
             {
                 return false;
             }
 
             if (Server.Port != server.Port) return await SendToWorldAsync(server, zoneId);
-            
+
             Logger.Error("Could not send a player to the same port as it already has");
 
             return false;
         }
 
-        private async Task SetCurrencyAsync(long currency)
+        public async Task SetCurrencyAsync(long currency)
         {
             await using (var ctx = new UchuContext())
             {
@@ -448,11 +456,11 @@ namespace Uchu.World
             });
         }
 
-        private async Task SetUniverseScoreAsync(long score)
+        public async Task SetUniverseScoreAsync(long score)
         {
             await using var ctx = new UchuContext();
             await using var cdClient = new CdClientContext();
-            
+
             var character = await ctx.Characters.FirstAsync(c => c.Id == Id);
 
             character.UniverseScore = score;
@@ -467,17 +475,17 @@ namespace Uchu.World
             Message(new ModifyLegoScoreMessage
             {
                 Associate = this,
-                Score = character.UniverseScore - UniverseScore
+                Score = character.UniverseScore - await GetUniverseScoreAsync()
             });
 
             await ctx.SaveChangesAsync();
         }
 
-        private async Task SetLevelAsync(long level)
+        public async Task SetLevelAsync(long level)
         {
             await using var ctx = new UchuContext();
             await using var cdClient = new CdClientContext();
-            
+
             var character = await ctx.Characters.FirstAsync(c => c.Id == Id);
 
             var lookup = await cdClient.LevelProgressionLookupTable.FirstOrDefaultAsync(l => l.Id == level);
@@ -495,7 +503,7 @@ namespace Uchu.World
             Message(new ModifyLegoScoreMessage
             {
                 Associate = this,
-                Score = character.UniverseScore - UniverseScore
+                Score = character.UniverseScore - await GetUniverseScoreAsync()
             });
 
             await ctx.SaveChangesAsync();

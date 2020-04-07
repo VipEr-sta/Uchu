@@ -30,7 +30,7 @@ namespace Uchu.World.Behaviors
         {
              await base.ExecuteAsync(context, branchContext);
 
-             var obj = GameObject.Instantiate<AuthoredGameObject>(
+             var obj = await GameObject.InstantiateAsync<AuthoredGameObject>(
                  context.Associate.Zone,
                  Lot,
                  context.Associate.Transform.Position,
@@ -39,14 +39,14 @@ namespace Uchu.World.Behaviors
 
              obj.Author = context.Associate;
 
-             Object.Start(obj);
+             await Object.StartAsync(obj);
              GameObject.Construct(obj);
 
              var _ = Task.Run(async () =>
              {
                  await Task.Delay(branchContext.Duration);
 
-                 Object.Destroy(obj);
+                 await Object.DestroyAsync(obj);
              });
         }
     }

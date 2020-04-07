@@ -13,25 +13,25 @@ namespace Uchu.StandardScripts.AvantGardens
             {
                 if (!gameObject.TryGetComponent<DestructibleComponent>(out var destructibleComponent)) continue;
 
-                Listen(destructibleComponent.OnSmashed, (smasher, lootOwner) =>
+                Listen(destructibleComponent.OnSmashed, async (smasher, lootOwner) =>
                 {
-                    var quickBuild = GameObject.Instantiate(
+                    var quickBuild = await GameObject.InstantiateAsync(
                         Zone,
                         6254,
                         gameObject.Transform.Position,
                         gameObject.Transform.Rotation
                     );
 
-                    Start(quickBuild);
+                    await StartAsync(quickBuild);
                     Construct(quickBuild);
 
-                    Task.Run(async () =>
+                    var _ = Task.Run(async () =>
                     {
                         await Task.Delay(20000);
                         
                         await quickBuild.GetComponent<DestructibleComponent>().SmashAsync(quickBuild, lootOwner);
 
-                        Destroy(quickBuild);
+                        await DestroyAsync(quickBuild);
                     });
                 });
             }

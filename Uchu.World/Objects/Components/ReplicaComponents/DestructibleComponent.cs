@@ -24,13 +24,17 @@ namespace Uchu.World
         /// <summary>
         ///     Killer, Loot Owner
         /// </summary>
-        public Event<GameObject, Player> OnSmashed { get; } = new Event<GameObject, Player>();
+        public AsyncEvent<GameObject, Player> OnSmashed { get; }
 
-        public Event OnResurrect { get; } = new Event();
+        public AsyncEvent OnResurrect { get; }
 
         protected DestructibleComponent()
         {
-            Listen(OnStart, () =>
+            OnSmashed = new AsyncEvent<GameObject, Player>();
+            
+            OnResurrect = new AsyncEvent();
+            
+            Listen(OnStart, async () =>
             {
                 if (GameObject.Settings.TryGetValue("respawn", out var resTimer))
                 {
@@ -45,7 +49,7 @@ namespace Uchu.World
 
                 GameObject.Layer = StandardLayer.Smashable;
 
-                GameObject.AddComponent<LootContainerComponent>();
+                await GameObject.AddComponentAsync<LootContainerComponent>();
 
                 Stats = GameObject.GetComponent<Stats>();
 
@@ -65,6 +69,8 @@ namespace Uchu.World
                 OnResurrect.Clear();
 
                 OnSmashed.Clear();
+                
+                return Task.CompletedTask;
             });
         }
 
@@ -109,15 +115,8 @@ namespace Uchu.World
 
             if (GameObject is Player)
             {
-                //
-                // Player
-                //
-
-                var coinToDrop = Math.Min((long) Math.Round(As<Player>().Currency * 0.1), 10000);
-                As<Player>().Currency -= coinToDrop;
-
-                InstancingUtil.Currency((int) coinToDrop, owner, owner, Transform.Position);
-
+                await GeneratePlayerYieldsAsync(owner);
+                
                 return;
             }
 
@@ -127,7 +126,7 @@ namespace Uchu.World
 
             if (owner == null)
             {
-                OnSmashed.Invoke(smasher, default);
+                await OnSmashed.InvokeAsync(smasher, default);
 
                 return;
             }
@@ -137,59 +136,77 @@ namespace Uchu.World
 
             InitializeRespawn();
 
+            await GenerateYieldsAsync(owner);
+
+            await OnSmashed.InvokeAsync(smasher, owner);
+        }
+        
+        private async Task GenerateYieldsAsync(Player owner)
+        {
             var container = GameObject.GetComponent<LootContainerComponent>();
 
             await container.CollectDetailsAsync();
 
             foreach (var lot in container.GenerateLootYields())
             {
-                var drop = InstancingUtil.Loot(lot, owner, GameObject, Transform.Position);
+                var drop = await InstancingUtilities.InstantiateLootAsync(lot, owner, GameObject, Transform.Position);
 
-                Start(drop);
+                await StartAsync(drop);
             }
 
             var currency = container.GenerateCurrencyYields();
 
             if (currency > 0)
             {
-                InstancingUtil.Currency(currency, owner, GameObject, Transform.Position);
+                InstancingUtilities.InstantiateCurrency(currency, owner, GameObject, Transform.Position);
             }
-
-            OnSmashed.Invoke(smasher, owner);
         }
 
+        private async Task GeneratePlayerYieldsAsync(Player owner)
+        {
+            var player = (Player) GameObject;
+
+            var currency = await player.GetCurrencyAsync();
+            
+            var coinToDrop = Math.Min((long) Math.Round(currency * 0.1), 10000);
+
+            await player.SetCurrencyAsync(currency - coinToDrop);
+
+            InstancingUtilities.InstantiateCurrency((int) coinToDrop, owner, owner, Transform.Position);
+        }
+        
         private void InitializeRespawn()
         {
             Task.Run(async () =>
             {
                 await Task.Delay((int) (ResurrectTime * 1000));
 
-                Resurrect();
+                await ResurrectAsync();
             });
         }
 
-        public void Resurrect()
+        public async Task ResurrectAsync()
         {
             Alive = true;
 
-            if (GameObject is Player)
+            if (GameObject is Player player)
             {
                 Zone.BroadcastMessage(new ResurrectMessage
                 {
-                    Associate = As<Player>()
+                    Associate = player
                 });
 
-                Stats.Health = Math.Min(Stats.MaxHealth, 4);
+                await Stats.SetHealthAsync(Math.Min(Stats.MaxHealth, 4));
             }
             else
             {
-                Stats.Health = Stats.MaxHealth;
+                await Stats.SetHealthAsync(Stats.MaxHealth);
 
                 GameObject.Layer += StandardLayer.Smashable;
                 GameObject.Layer -= StandardLayer.Hidden;
             }
 
-            OnResurrect.Invoke();
+            await OnResurrect.InvokeAsync();
         }
     }
 }

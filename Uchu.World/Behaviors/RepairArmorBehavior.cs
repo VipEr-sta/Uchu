@@ -19,7 +19,7 @@ namespace Uchu.World.Behaviors
 
             if (!branchContext.Target.TryGetComponent<Stats>(out var stats)) return;
 
-            stats.Armor = (uint) ((int) stats.Armor + Armor);
+            await stats.SetArmorAsync((uint) ((int) stats.Armor + Armor));
         }
     }
 }

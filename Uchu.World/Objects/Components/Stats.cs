@@ -11,18 +11,6 @@ namespace Uchu.World
 {
     public class Stats : Component
     {
-        private uint _health;
-
-        private uint _maxHealth;
-
-        private uint _armor;
-
-        private uint _maxArmor;
-
-        private uint _imagination;
-
-        private uint _maxImagination;
-        
         public int[] Factions { get; set; } = new int[0];
         
         public int[] Enemies { get; set; } = new int[0];
@@ -37,124 +25,17 @@ namespace Uchu.World
 
         public GameObject LatestDamageSource { get; private set; }
 
-        public uint Health
-        {
-            get => _health;
-            set
-            {
-                value = Math.Min(value, MaxHealth);
+        public uint Health { get; private set; }
 
-                if (value == _health) return;
+        public uint MaxHealth { get; private set; }
 
-                OnHealthChanged.Invoke(value, (int) ((int) value - _health));
+        public uint Armor { get; private set; }
 
-                _health = value;
+        public uint MaxArmor { get; private set; }
 
-                GameObject.Serialize(GameObject);
+        public uint Imagination { get; private set; }
 
-                if (_health == 0) OnDeath.Invoke();
-            }
-        }
-
-        public uint MaxHealth
-        {
-            get => _maxHealth;
-            set
-            {
-                var delta = (int) ((int) value - _maxHealth);
-
-                if (delta < 0 && _health > value)
-                {
-                    OnHealthChanged.Invoke(value, (int) ((int) value - _health));
-
-                    _health = value;
-                }
-                
-                OnMaxHealthChanged.Invoke(value, delta);
-
-                _maxHealth = value;
-
-                GameObject.Serialize(GameObject);
-            }
-        }
-
-        public uint Armor
-        {
-            get => _armor;
-            set
-            {
-                value = Math.Min(value, MaxArmor);
-
-                if (value == _armor) return;
-
-                OnArmorChanged.Invoke(value, (int) ((int) value - _armor));
-
-                _armor = value;
-
-                GameObject.Serialize(GameObject);
-            }
-        }
-
-        public uint MaxArmor
-        {
-            get => _maxArmor;
-            set
-            {
-                var delta = (int) ((int) value - _maxArmor);
-
-                if (delta < 0 && _armor > value)
-                {
-                    OnArmorChanged.Invoke(value, (int) ((int) value - _armor));
-
-                    _armor = value;
-                }
-                
-                OnMaxArmorChanged.Invoke(value, delta);
-
-                _maxArmor = value;
-
-                GameObject.Serialize(GameObject);
-            }
-        }
-
-        public uint Imagination
-        {
-            get => _imagination;
-            set
-            {
-                value = Math.Min(value, MaxImagination);
-
-                if (value == _imagination) return;
-
-                OnImaginationChanged.Invoke(value, (int) ((int) value - _imagination));
-
-                _imagination = value;
-
-                GameObject.Serialize(GameObject);
-            }
-        }
-
-        public uint MaxImagination
-        {
-            get => _maxImagination;
-            set
-            {
-                var delta = (int) ((int) value - _maxImagination);
-
-                if (delta < 0 && _imagination > value)
-                {
-                    OnImaginationChanged.Invoke(value, (int) ((int) value - _imagination));
-
-                    _imagination = value;
-                }
-                
-                OnMaxImaginationChanged.Invoke(value, delta);
-
-                _maxImagination = value;
-
-                GameObject.Serialize(GameObject);
-            }
-        }
+        public uint MaxImagination { get; private set; }
 
         public bool Smashable { get; set; }
         
@@ -163,46 +44,62 @@ namespace Uchu.World
         /// <summary>
         /// New Health, Delta
         /// </summary>
-        public readonly AsyncEvent<uint, int> OnHealthChanged = new AsyncEvent<uint, int>();
+        public AsyncEvent<uint, int> OnHealthChanged { get; }
 
         /// <summary>
         /// New Armor, Delta
         /// </summary>
-        public readonly AsyncEvent<uint, int> OnArmorChanged = new AsyncEvent<uint, int>();
+        public AsyncEvent<uint, int> OnArmorChanged { get; }
 
         /// <summary>
         /// New Imagination, Delta
         /// </summary>
-        public readonly AsyncEvent<uint, int> OnImaginationChanged = new AsyncEvent<uint, int>();
+        public AsyncEvent<uint, int> OnImaginationChanged { get; }
 
         /// <summary>
         /// New MaxHealth, Delta
         /// </summary>
-        public readonly AsyncEvent<uint, int> OnMaxHealthChanged = new AsyncEvent<uint, int>();
+        public AsyncEvent<uint, int> OnMaxHealthChanged { get; }
 
         /// <summary>
         /// New MaxArmor, Delta
         /// </summary>
-        public readonly AsyncEvent<uint, int> OnMaxArmorChanged = new AsyncEvent<uint, int>();
+        public AsyncEvent<uint, int> OnMaxArmorChanged { get; }
 
         /// <summary>
         /// New MaxImagination, Delta
         /// </summary>
-        public readonly AsyncEvent<uint, int> OnMaxImaginationChanged = new AsyncEvent<uint, int>();
+        public AsyncEvent<uint, int> OnMaxImaginationChanged { get; }
 
-        public readonly Event OnDeath = new Event();
+        public AsyncEvent OnDeath { get; }
 
         protected Stats()
         {
+            OnHealthChanged = new AsyncEvent<uint, int>();
+            
+            OnArmorChanged = new AsyncEvent<uint, int>();
+            
+            OnImaginationChanged = new AsyncEvent<uint, int>();
+            
+            OnMaxHealthChanged = new AsyncEvent<uint, int>();
+            
+            OnMaxArmorChanged = new AsyncEvent<uint, int>();
+            
+            OnMaxImaginationChanged = new AsyncEvent<uint, int>();
+            
+            OnDeath = new AsyncEvent();
+
             Listen(OnStart, async () =>
             {
                 if (GameObject is Player) CollectPlayerStats();
-                else CollectObjectStats();
+                else await CollectObjectStatsAsync();
                 
                 await using var cdClient = new CdClientContext();
 
-                var destroyable = cdClient.DestructibleComponentTable.FirstOrDefault(
-                    c => c.Id == GameObject.Lot.GetComponentId(ComponentId.DestructibleComponent)
+                var componentId = await GameObject.Lot.GetComponentIdAsync(ComponentId.DestructibleComponent);
+
+                var destroyable = await cdClient.DestructibleComponentTable.FirstOrDefaultAsync(
+                    c => c.Id == componentId
                 );
                 
                 if (destroyable == default) return;
@@ -232,17 +129,18 @@ namespace Uchu.World
                 OnHealthChanged.Clear();
                 OnMaxArmorChanged.Clear();
                 OnMaxImaginationChanged.Clear();
-
                 OnDeath.Clear();
+                
+                return Task.CompletedTask;
             });
-
-            if (As<Player>() == default) return;
+            
+            if (!(GameObject is Player)) return;
 
             Listen(OnHealthChanged, async (total, delta) =>
             {
                 await using var ctx = new UchuContext();
 
-                var character = await ctx.Characters.FirstAsync(c => c.Id == As<Player>().Id);
+                var character = await ctx.Characters.FirstAsync(c => c.Id == GameObject.Id);
 
                 character.CurrentHealth = (int) total;
 
@@ -253,7 +151,7 @@ namespace Uchu.World
             {
                 await using var ctx = new UchuContext();
 
-                var character = await ctx.Characters.FirstAsync(c => c.Id == As<Player>().Id);
+                var character = await ctx.Characters.FirstAsync(c => c.Id == GameObject.Id);
 
                 character.CurrentArmor = (int) total;
 
@@ -264,7 +162,7 @@ namespace Uchu.World
             {
                 await using var ctx = new UchuContext();
 
-                var character = await ctx.Characters.FirstAsync(c => c.Id == As<Player>().Id);
+                var character = await ctx.Characters.FirstAsync(c => c.Id == GameObject.Id);
 
                 character.CurrentImagination = (int) total;
 
@@ -275,7 +173,7 @@ namespace Uchu.World
             {
                 await using var ctx = new UchuContext();
 
-                var character = await ctx.Characters.FirstAsync(c => c.Id == As<Player>().Id);
+                var character = await ctx.Characters.FirstAsync(c => c.Id == GameObject.Id);
 
                 character.MaximumHealth = (int) total;
 
@@ -286,7 +184,7 @@ namespace Uchu.World
             {
                 await using var ctx = new UchuContext();
 
-                var character = await ctx.Characters.FirstAsync(c => c.Id == As<Player>().Id);
+                var character = await ctx.Characters.FirstAsync(c => c.Id == GameObject.Id);
 
                 character.MaximumArmor = (int) total;
 
@@ -297,12 +195,110 @@ namespace Uchu.World
             {
                 await using var ctx = new UchuContext();
 
-                var character = await ctx.Characters.FirstAsync(c => c.Id == As<Player>().Id);
+                var character = await ctx.Characters.FirstAsync(c => c.Id == GameObject.Id);
 
                 character.MaximumImagination = (int) total;
 
                 await ctx.SaveChangesAsync();
             });
+        }
+
+        public async Task SetHealthAsync(uint value)
+        {
+            value = Math.Min(value, MaxHealth);
+
+            if (value == Health) return;
+
+            await OnHealthChanged.InvokeAsync(value, (int) ((int) value - Health));
+
+            Health = value;
+
+            GameObject.Serialize(GameObject);
+
+            if (Health == default)
+            {
+                await OnDeath.InvokeAsync();
+            }
+        }
+
+        public async Task SetMaxHealthAsync(uint value)
+        {
+            var delta = (int) ((int) value - MaxHealth);
+
+            if (delta < 0 && Health > value)
+            {
+                await OnHealthChanged.InvokeAsync(value, (int) ((int) value - Health));
+
+                Health = value;
+            }
+            
+            await OnMaxHealthChanged.InvokeAsync(value, delta);
+
+            MaxHealth = value;
+
+            GameObject.Serialize(GameObject);
+        }
+
+        public async Task SetArmorAsync(uint value)
+        {
+            value = Math.Min(value, MaxArmor);
+
+            if (value == Armor) return;
+
+            await OnArmorChanged.InvokeAsync(value, (int) ((int) value - Armor));
+
+            Armor = value;
+
+            GameObject.Serialize(GameObject);
+        }
+
+        public async Task SetMaxArmorAsync(uint value)
+        {
+            var delta = (int) ((int) value - MaxArmor);
+
+            if (delta < 0 && Armor > value)
+            {
+                await OnArmorChanged.InvokeAsync(value, (int) ((int) value - Armor));
+
+                Armor = value;
+            }
+            
+            await OnMaxArmorChanged.InvokeAsync(value, delta);
+
+            MaxArmor = value;
+
+            GameObject.Serialize(GameObject);
+        }
+
+        public async Task SetImaginationAsync(uint value)
+        {
+            value = Math.Min(value, MaxImagination);
+
+            if (value == Imagination) return;
+
+            await OnImaginationChanged.InvokeAsync(value, (int) ((int) value - Imagination));
+
+            Imagination = value;
+
+            GameObject.Serialize(GameObject);
+        }
+
+        public async Task SetMaxImaginationAsync(uint value)
+        {
+            var delta = (int) ((int) value - MaxImagination);
+
+            if (delta < 0 && Imagination > value)
+            {
+                await OnImaginationChanged.InvokeAsync(value, (int) ((int) value - Imagination));
+
+                Imagination = value;
+            }
+            
+            await OnMaxImaginationChanged.InvokeAsync(value, delta);
+
+            MaxImagination = value;
+
+            GameObject.Serialize(GameObject);
         }
 
         public void Damage(uint value, GameObject source)
@@ -338,7 +334,7 @@ namespace Uchu.World
 
             await using var ctx = new UchuContext();
 
-            var character = ctx.Characters.First(c => c.Id == GameObject.Id);
+            var character = await ctx.Characters.FirstAsync(c => c.Id == GameObject.Id);
 
             character.BaseHealth += (int) delta;
 
@@ -355,7 +351,7 @@ namespace Uchu.World
 
             await using var ctx = new UchuContext();
 
-            var character = ctx.Characters.First(c => c.Id == GameObject.Id);
+            var character = await ctx.Characters.FirstAsync(c => c.Id == GameObject.Id);
 
             character.BaseImagination += (int) delta;
 
@@ -366,12 +362,14 @@ namespace Uchu.World
             await ctx.SaveChangesAsync();
         }
 
-        private void CollectObjectStats()
+        private async Task CollectObjectStatsAsync()
         {
-            using var cdClient = new CdClientContext();
+            await using var ctx = new CdClientContext();
 
-            var stats = cdClient.DestructibleComponentTable.FirstOrDefault(
-                o => o.Id == GameObject.Lot.GetComponentId(ComponentId.DestructibleComponent)
+            var componentId = await GameObject.Lot.GetComponentIdAsync(ComponentId.DestructibleComponent);
+            
+            var stats = await ctx.DestructibleComponentTable.FirstOrDefaultAsync(
+                o => o.Id == componentId
             );
 
             if (stats == default) return;
@@ -380,13 +378,13 @@ namespace Uchu.World
             var rawArmor = (int) (stats.Armor ?? 0);
             var rawImagination = stats.Imagination ?? 0;
 
-            _health = (uint) (rawHealth != -1 ? rawHealth : 0);
-            _armor = (uint) (rawArmor != -1 ? rawArmor : 0);
-            _imagination = (uint) (rawImagination != -1 ? rawImagination : 0);
+            Health = (uint) (rawHealth != -1 ? rawHealth : 0);
+            Armor = (uint) (rawArmor != -1 ? rawArmor : 0);
+            Imagination = (uint) (rawImagination != -1 ? rawImagination : 0);
 
-            _maxHealth = Health;
-            _maxArmor = Armor;
-            _maxImagination = Imagination;
+            MaxHealth = Health;
+            MaxArmor = Armor;
+            MaxImagination = Imagination;
         }
 
         private void CollectPlayerStats()
@@ -401,14 +399,14 @@ namespace Uchu.World
              * Any additional stats gets added on by skills.
              */
             
-            _health = (uint) character.CurrentHealth;
-            _maxHealth = (uint) character.BaseHealth;
+            Health = (uint) character.CurrentHealth;
+            MaxHealth = (uint) character.BaseHealth;
 
-            _armor = (uint) character.CurrentArmor;
-            _maxArmor = default;
+            Armor = (uint) character.CurrentArmor;
+            MaxArmor = default;
 
-            _imagination = (uint) character.CurrentImagination;
-            _maxImagination = (uint) character.BaseImagination;
+            Imagination = (uint) character.CurrentImagination;
+            MaxImagination = (uint) character.BaseImagination;
         }
         
         public void Construct(BitWriter writer)
@@ -445,9 +443,9 @@ namespace Uchu.World
 
         private void WriteStats(BitWriter writer)
         {
-            writer.WriteBit(HasStats);
-
-            if (!HasStats) return;
+            HasStats = true;
+            
+            if (!writer.Flag(HasStats)) return;
 
             writer.Write(Health);
             writer.Write<float>(MaxHealth);

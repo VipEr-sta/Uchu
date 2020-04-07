@@ -50,6 +50,8 @@ namespace Uchu.StandardScripts.VentureExplorer
                         
                         gameObject.StopFX("console_sparks");
                     });
+                    
+                    return Task.CompletedTask;
                 });
             }
             

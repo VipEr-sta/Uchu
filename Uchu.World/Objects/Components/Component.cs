@@ -4,13 +4,14 @@ namespace Uchu.World
     {
         protected Component()
         {
-            Listen(OnDestroyed, () => { GameObject.RemoveComponent(this); });
+            Listen(OnDestroyed, async () =>
+            {
+                await GameObject.RemoveComponentAsync(this, false);
+            });
         }
 
         public GameObject GameObject { get; set; }
 
         public Transform Transform => GameObject.Transform;
-
-        protected T As<T>() where T : GameObject => GameObject as T;
     }
 }

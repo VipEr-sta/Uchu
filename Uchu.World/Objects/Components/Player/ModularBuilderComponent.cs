@@ -27,6 +27,8 @@ namespace Uchu.World
                     
                     return Task.CompletedTask;
                 });
+                
+                return Task.CompletedTask;
             });
         }
         
@@ -35,7 +37,9 @@ namespace Uchu.World
             get => _building;
             private set
             {
-                As<Player>().Message(new SetStunnedMessage
+                var player = (Player) GameObject;
+                
+                player.Message(new SetStunnedMessage
                 {
                     Associate = GameObject,
                     CantAttack = value
@@ -51,15 +55,13 @@ namespace Uchu.World
 
         public void StartBuilding(StartBuildingWithItemMessage message)
         {
-            As<Player>().SendChatMessage(
-                $"[{IsBuilding}]\n{string.Join('\n', typeof(StartBuildingWithItemMessage).GetProperties().Select(p => $"{p.Name} = {p.GetValue(message)}"))}"
-            );
-            
             IsBuilding = true;
             
             BasePlate = message.Associate;
+
+            var player = (Player) GameObject;
             
-            As<Player>().Message(new StartArrangingWithItemMessage
+            player.Message(new StartArrangingWithItemMessage
             {
                 Associate = GameObject,
                 FirstTime = message.FirstTime,
@@ -80,7 +82,9 @@ namespace Uchu.World
 
         public void StartBuildingWithItem(Item item)
         {
-            As<Player>().Message(new StartArrangingWithItemMessage
+            var player = (Player) GameObject;
+
+            player.Message(new StartArrangingWithItemMessage
             {
                 Associate = GameObject,
                 FirstTime = false,
@@ -105,7 +109,7 @@ namespace Uchu.World
 
             foreach (var module in models)
             {
-                inventory.RemoveItem(module, 1, InventoryType.TemporaryModels);
+                await inventory.RemoveItemAsync(module, 1, InventoryType.TemporaryModels);
             }
 
             var model = new LegoDataDictionary
@@ -120,13 +124,11 @@ namespace Uchu.World
         
         public void DoneArranging(DoneArrangingWithItemMessage message)
         {
-            As<Player>().SendChatMessage($"DONE: {message.NewSource}\t{message.NewTarget}\t{message.OldSource}");
+            
         }
 
         public async Task Pickup(Lot lot)
         {
-            As<Player>().SendChatMessage($"PICKUP: {lot}");
-            
             var inventory = GameObject.GetComponent<InventoryManagerComponent>();
             
             var item = inventory[InventoryType.TemporaryModels].Items.First(i => i.Lot == lot);
@@ -153,7 +155,7 @@ namespace Uchu.World
                 await inventory.MoveItemsBetweenInventoriesAsync(
                     temp,
                     temp.Lot,
-                    temp.Count,
+                    await temp.GetCountAsync(),
                     InventoryType.TemporaryModels,
                     InventoryType.Models
                 );

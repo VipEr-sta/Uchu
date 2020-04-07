@@ -77,6 +77,8 @@ namespace Uchu.World
                 State = PlatformState.Idle;
                 
                 Task.Run(WaitPoint);
+
+                return Task.CompletedTask;
             });
         }
 

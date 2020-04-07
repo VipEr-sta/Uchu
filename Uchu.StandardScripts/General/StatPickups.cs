@@ -10,62 +10,68 @@ namespace Uchu.StandardScripts.General
         {
             Listen(Zone.OnPlayerLoad, player =>
             {
-                Listen(player.OnLootPickup, lot =>
+                Listen(player.OnLootPickup, async lot =>
                 {
                     var stats = player.GetComponent<Stats>();
-                    
+
+                    var health = stats.Health;
+                    var armor = stats.Armor;
+                    var imagination = stats.Imagination;
+
                     switch (lot)
                     {
                         case Lot.Imagination:
-                            stats.Imagination += 1;
+                            imagination += 1;
                             break;
                         case Lot.TwoImagination:
-                            stats.Imagination += 2;
+                            imagination += 2;
                             break;
                         case Lot.ThreeImagination:
-                            stats.Imagination += 3;
+                            imagination += 3;
                             break;
                         case Lot.FiveImagination:
-                            stats.Imagination += 5;
+                            imagination += 5;
                             break;
                         case Lot.TenImagination:
-                            stats.Imagination += 10;
+                            imagination += 10;
                             break;
                         case Lot.Health:
-                            stats.Health += 1;
+                            health += 1;
                             break;
                         case Lot.TwoHealth:
-                            stats.Health += 2;
+                            health += 2;
                             break;
                         case Lot.ThreeHealth:
-                            stats.Health += 3;
+                            health += 3;
                             break;
                         case Lot.FiveHealth:
-                            stats.Health += 5;
+                            health += 5;
                             break;
                         case Lot.TenHealth:
-                            stats.Health += 10;
+                            health += 10;
                             break;
                         case Lot.Armor:
-                            stats.Armor += 1;
+                            armor += 1;
                             break;
                         case Lot.TwoArmor:
-                            stats.Armor += 2;
+                            armor += 2;
                             break;
                         case Lot.ThreeArmor:
-                            stats.Armor += 3;
+                            armor += 3;
                             break;
                         case Lot.FiveArmor:
-                            stats.Armor += 5;
+                            armor += 5;
                             break;
                         case Lot.TenArmor:
-                            stats.Armor += 10;
+                            armor += 10;
                             break;
                         default:
-                            return Task.CompletedTask;
+                            return;
                     }
-                    
-                    return Task.CompletedTask;
+
+                    await stats.SetHealthAsync(health);
+                    await stats.SetArmorAsync(armor);
+                    await stats.SetImaginationAsync(imagination);
                 });
 
                 return Task.CompletedTask;

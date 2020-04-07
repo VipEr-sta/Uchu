@@ -1,5 +1,6 @@
 using System.Linq;
 using InfectedRose.Lvl;
+using Microsoft.EntityFrameworkCore;
 using RakDotNet.IO;
 using Uchu.Core;
 using Uchu.Core.Client;
@@ -18,13 +19,15 @@ namespace Uchu.World
 
         protected LuaScriptComponent()
         {
-            Listen(OnStart, () =>
+            Listen(OnStart, async () =>
             {
-                using var ctx = new CdClientContext();
+                await using var ctx = new CdClientContext();
             
-                var scriptId = GameObject.Lot.GetComponentId(ComponentId.ScriptComponent);
+                var scriptId = await GameObject.Lot.GetComponentIdAsync(ComponentId.ScriptComponent);
 
-                var script = ctx.ScriptComponentTable.FirstOrDefault(s => s.Id == scriptId);
+                var script = await ctx.ScriptComponentTable.FirstOrDefaultAsync(
+                    s => s.Id == scriptId
+                );
 
                 if (script == default)
                 {

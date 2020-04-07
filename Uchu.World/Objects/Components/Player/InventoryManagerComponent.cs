@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using InfectedRose.Lvl;
 using Microsoft.EntityFrameworkCore;
@@ -12,20 +13,26 @@ namespace Uchu.World
 {
     public class InventoryManagerComponent : Component
     {
-        private readonly Dictionary<InventoryType, Inventory> _inventories = new Dictionary<InventoryType, Inventory>();
+        private readonly Dictionary<InventoryType, Inventory> _inventories;
 
-        private object _lock;
+        public AsyncEvent<Lot, uint> OnLotAdded { get; }
 
-        public AsyncEvent<Lot, uint> OnLotAdded { get; } = new AsyncEvent<Lot, uint>();
-
-        public AsyncEvent<Lot, uint> OnLotRemoved { get; } = new AsyncEvent<Lot, uint>();
+        public AsyncEvent<Lot, uint> OnLotRemoved { get; }
+        
+        private SemaphoreSlim CalculationLock { get; }
 
         protected InventoryManagerComponent()
         {
+            _inventories = new Dictionary<InventoryType, Inventory>();;
+            
+            OnLotAdded = new AsyncEvent<Lot, uint>();
+            
+            OnLotRemoved = new AsyncEvent<Lot, uint>();
+
+            CalculationLock = new SemaphoreSlim(1, 1);
+            
             Listen(OnStart, () =>
             {
-                _lock = new object();
-
                 foreach (var value in Enum.GetValues(typeof(InventoryType)))
                 {
                     var id = (InventoryType) value;
@@ -34,15 +41,20 @@ namespace Uchu.World
 
                     _inventories.Add(id, new Inventory(id, this));
                 }
+                
+                return Task.CompletedTask;
             });
 
-            Listen(OnDestroyed, () =>
+            Listen(OnDestroyed,  async () =>
             {
                 OnLotAdded.Clear();
                 
                 OnLotRemoved.Clear();
-                
-                foreach (var item in _inventories.Values.SelectMany(inventory => inventory.Items)) Destroy(item);
+
+                foreach (var item in _inventories.Values.SelectMany(inventory => inventory.Items))
+                {
+                    await DestroyAsync(item);
+                }
             });
         }
 
@@ -149,10 +161,7 @@ namespace Uchu.World
         {
             var itemCount = count;
             
-            var _ = Task.Run(() =>
-            {
-                OnLotAdded.Invoke(lot, itemCount);
-            });
+            await OnLotAdded.InvokeAsync(lot, itemCount);
 
             if (!_inventories.TryGetValue(inventoryType, out var inventory))
             {
@@ -187,8 +196,6 @@ namespace Uchu.World
                 return;
             }
 
-            As<Player>().SendChatMessage($"Calculating for {lot} x {count} [{inventoryType}]");
-            
             var stackSize = component.StackSize ?? 1;
             
             // Bricks and alike does not have a stack limit.
@@ -208,18 +215,22 @@ namespace Uchu.World
             //
             // Fill stacks
             //
+            
+            await CalculationLock.WaitAsync();
 
-            lock (_lock)
+            try
             {
                 foreach (var item in inventory.Items.Where(i => i.Lot == lot))
                 {
                     if (item.Settings.Count != default) continue;
 
-                    if (item.Count == stackSize) continue;
+                    var size = await item.GetCountAsync();
+                    
+                    if (size == stackSize) continue;
 
-                    var toAdd = (uint) Min(stackSize, (int) count, (int) (stackSize - item.Count));
+                    var toAdd = (uint) Min(stackSize, (int) count, (int) (stackSize - size));
 
-                    item.Count += toAdd;
+                    await item.SetCountAsync(size + toAdd);
 
                     count -= toAdd;
 
@@ -236,12 +247,16 @@ namespace Uchu.World
                 {
                     var toAdd = (uint) Min(stackSize, (int) toCreate);
 
-                    var item = Item.Instantiate(lot, inventory, toAdd, extraInfo);
+                    var item = await Item.InstantiateAsync(lot, inventory, toAdd, extraInfo);
 
-                    Start(item);
+                    await StartAsync(item);
 
                     toCreate -= toAdd;
                 }
+            }
+            finally
+            {
+                CalculationLock.Release();
             }
         }
 
@@ -274,16 +289,14 @@ namespace Uchu.World
 
             Debug.Assert(component.ItemType != null, "component.ItemType != null");
 
-            RemoveItem(lot, count, ((ItemType) component.ItemType).GetInventoryType(), silent);
+            await RemoveItemAsync(lot, count, ((ItemType) component.ItemType).GetInventoryType(), silent);
         }
 
-        public void RemoveItem(int lot, uint count, InventoryType inventoryType, bool silent = false)
+        public async Task RemoveItemAsync(int lot, uint count, InventoryType inventoryType, bool silent = false)
         {
-            As<Player>()?.SendChatMessage($"Removing: {lot} x {count} from {inventoryType}");
-            
-            OnLotRemoved.Invoke(lot, count);
+            await OnLotRemoved.InvokeAsync(lot, count);
 
-            using var cdClient = new CdClientContext();
+            await using var cdClient = new CdClientContext();
             
             var componentId = cdClient.ComponentsRegistryTable.FirstOrDefault(
                 r => r.Id == lot && r.Componenttype == (int) ComponentId.ItemComponent
@@ -309,27 +322,36 @@ namespace Uchu.World
 
             var items = _inventories[inventoryType].Items.Where(i => i.Lot == lot).ToList();
 
+            var sizes = new Dictionary<Item, uint>();
+
+            foreach (var item in items)
+            {
+                sizes[item] = await item.GetCountAsync();
+            }
+            
             //
             // Sort to make sure we remove from the stacks with the lowest count first.
             //
 
-            items.Sort((i1, i2) => (int) (i1.Count - i2.Count));
+            items.Sort((i1, i2) => (int) (sizes[i1] - sizes[i2]));
 
             foreach (var item in items)
             {
-                var toRemove = (uint) Min((int) count, (int) item.Count);
+                var size = sizes[item];
+                
+                var toRemove = (uint) Min((int) count, (int) size);
 
                 if (!silent)
                 {
-                    item.Count -= toRemove;
+                    await item.SetCountAsync(size - toRemove);
                 }
                 else
                 {
-                    var storedCount = item.Count - toRemove;
+                    var storedCount = size - toRemove;
                     
                     var _ = Task.Run(async () =>
                     {
-                        await item.SetCountSilentAsync(storedCount);
+                        await item.UpdateCountSilentAsync(storedCount);
                     });
                 }
 
@@ -349,20 +371,22 @@ namespace Uchu.World
         {
             if (item?.Settings != null)
             {
-                if (count != 1 || item.Count != 1)
+                var size = await item.GetCountAsync();
+
+                if (count != 1 || size != 1)
                 {
                     Logger.Error($"Invalid special item {item}");
                     return;
                 }
                 
-                Destroy(item);
+                await DestroyAsync(item);
 
                 await AddItemAsync(item.Lot, count, destination, item.Settings);
                 
                 return;
             }
             
-            RemoveItem(item?.Lot ?? lot, count, source, silent);
+            await RemoveItemAsync(item?.Lot ?? lot, count, source, silent);
 
             await AddItemAsync(item?.Lot ?? lot, count, destination);
         }

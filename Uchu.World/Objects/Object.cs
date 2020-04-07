@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Uchu.Core;
 
 namespace Uchu.World
@@ -11,12 +12,15 @@ namespace Uchu.World
 
         public Server Server => Zone.Server;
 
-        public Event OnStart { get; } = new Event();
+        public AsyncEvent OnStart { get; }
 
-        public Event OnDestroyed { get; } = new Event();
+        public AsyncEvent OnDestroyed { get; }
 
         protected Object()
         {
+            OnStart = new AsyncEvent();
+            
+            OnDestroyed = new AsyncEvent();
         }
         
         public static Object Instantiate(Type type, Zone zone)
@@ -42,22 +46,29 @@ namespace Uchu.World
             return Instantiate(typeof(Object), zone);
         }
 
-        public static void Start(Object obj)
+        public static async Task StartAsync(Object obj)
         {
             if (obj?.Started ?? true) return;
             
             obj.Started = true;
             
-            obj.Zone.RegisterObject(obj);
+            await obj.Zone.RegisterObjectAsync(obj);
 
-            obj.OnStart?.Invoke();
+            try
+            {
+                await obj.OnStart.InvokeAsync();
+            }
+            catch (Exception e)
+            {
+                Logger.Error(e);
+            }
         }
 
-        public static void Destroy(Object obj)
+        public static async Task DestroyAsync(Object obj)
         {
-            obj.Zone.UnregisterObject(obj);
-
-            obj.OnDestroyed.Invoke();
+            await obj.Zone.UnregisterObjectAsync(obj);
+            
+            await obj.OnDestroyed.InvokeAsync();
             
             obj.OnStart.Clear();
             obj.OnDestroyed.Clear();

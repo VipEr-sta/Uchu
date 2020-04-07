@@ -45,7 +45,7 @@ namespace Uchu.World.Behaviors
             
             for (var i = 0; i < count; i++)
             {
-                StartProjectile(context, target);
+                await StartProjectileAsync(context, target);
             }
         }
 
@@ -57,11 +57,11 @@ namespace Uchu.World.Behaviors
             
             for (var i = 0; i < count; i++)
             {
-                CalculateProjectile(context, branchContext.Target);
+                await CalculateProjectileAsync(context, branchContext.Target);
             }
         }
         
-        private void CalculateProjectile(ExecutionContext context, GameObject target)
+        private async Task CalculateProjectileAsync(ExecutionContext context, GameObject target)
         {
             context.Associate.Transform.LookAt(target.Transform.Position);
             
@@ -84,9 +84,9 @@ namespace Uchu.World.Behaviors
             projectile.RadiusCheck = TrackRadius;
             projectile.MaxDistance = MaxDistance;
 
-            Object.Start(projectile);
+            await Object.StartAsync(projectile);
 
-            Task.Run(async () =>
+            var _ = Task.Run(async () =>
             {
                 var distance = Vector3.Distance(context.Associate.Transform.Position, target.Transform.Position);
 
@@ -98,7 +98,7 @@ namespace Uchu.World.Behaviors
             });
         }
 
-        private void StartProjectile(ExecutionContext context, GameObject target)
+        private async Task StartProjectileAsync(ExecutionContext context, GameObject target)
         {
             var projectileId = context.Reader.Read<long>();
 
@@ -116,7 +116,7 @@ namespace Uchu.World.Behaviors
             
             ((Player) context.Associate)?.SendChatMessage($"Start PROJ: [{projectile.Lot}] {projectile.ClientObjectId} -> {projectile.Target}");
 
-            Object.Start(projectile);
+            await Object.StartAsync(projectile);
         }
     }
 }

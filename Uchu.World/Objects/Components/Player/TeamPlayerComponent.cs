@@ -4,7 +4,9 @@ namespace Uchu.World
     {
         public void MessageSetLeader(Player player)
         {
-            As<Player>().Message(new TeamSetLeaderMessage
+            var @this = (Player) GameObject;
+            
+            @this.Message(new TeamSetLeaderMessage
             {
                 Associate = GameObject,
                 NewLeader = player
@@ -13,7 +15,9 @@ namespace Uchu.World
 
         public void MessageAddPlayer(Player player)
         {
-            As<Player>().Message(new TeamAddPlayerMessage
+            var @this = (Player) GameObject;
+            
+            @this.Message(new TeamAddPlayerMessage
             {
                 Associate = GameObject,
                 Player = player

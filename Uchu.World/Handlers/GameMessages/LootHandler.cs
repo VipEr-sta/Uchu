@@ -6,7 +6,7 @@ namespace Uchu.World.Handlers.GameMessages
     public class LootHandler : HandlerGroup
     {
         [PacketHandler]
-        public void PickupCurrencyHandler(PickupCurrencyMessage message, Player player)
+        public async Task PickupCurrencyHandler(PickupCurrencyMessage message, Player player)
         {
             if (message.Currency > player.EntitledCurrency)
             {
@@ -15,7 +15,10 @@ namespace Uchu.World.Handlers.GameMessages
             }
 
             player.EntitledCurrency -= message.Currency;
-            player.Currency += message.Currency;
+
+            var currency = await player.GetCurrencyAsync();
+
+            await player.SetCurrencyAsync(currency + message.Currency);
         }
 
         [PacketHandler]
@@ -29,7 +32,7 @@ namespace Uchu.World.Handlers.GameMessages
             
             await player.OnLootPickup.InvokeAsync(message.Loot.Lot);
             
-            Object.Destroy(message.Loot);
+            await Object.DestroyAsync(message.Loot);
 
             await player.GetComponent<InventoryManagerComponent>().AddItemAsync(message.Loot.Lot, 1);
         }

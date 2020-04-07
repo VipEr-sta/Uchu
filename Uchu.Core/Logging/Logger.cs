@@ -137,7 +137,8 @@ namespace Uchu.Core
                 {
                     var invoker = TraceInvoker(trace);
 
-                    message = $"{message} {invoker.DeclaringType.Name}.{invoker.Name}";
+                    if (invoker?.DeclaringType != default)
+                        message = $"{message} {invoker.DeclaringType.Name}.{invoker.Name}";
                 }
 #endif
 

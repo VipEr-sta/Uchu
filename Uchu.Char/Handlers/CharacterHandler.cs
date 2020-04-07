@@ -257,6 +257,8 @@ namespace Uchu.Char.Handlers
         [PacketHandler]
         public async Task JoinWorld(JoinWorldRequest packet, IRakConnection connection)
         {
+            Logger.Debug($"{connection} requesting join world");
+            
             Server.SessionCache.SetCharacter(connection.EndPoint, packet.CharacterId);
 
             await using var ctx = new UchuContext();
@@ -266,10 +268,12 @@ namespace Uchu.Char.Handlers
             character.LastActivity = DateTimeOffset.Now.ToUnixTimeSeconds();
 
             await ctx.SaveChangesAsync();
-
+            
             var zone = (ZoneId) character.LastZone;
 
             var requestZone = (ZoneId) (zone == 0 ? 1000 : zone);
+            
+            Logger.Debug($"{connection} requesting world: {requestZone}");
 
             //
             // We don't want to lock up the server on a world server request, as it may take time.
@@ -283,6 +287,8 @@ namespace Uchu.Char.Handlers
                 
                 var server = await ServerHelper.RequestWorldServerAsync(Server, requestZone);
 
+                Logger.Debug($"{connection} found zone: {server != default}");
+                
                 if (server == default)
                 {
                     //
@@ -299,6 +305,10 @@ namespace Uchu.Char.Handlers
                 //
                 // Send to world server.
                 //
+
+                Console.WriteLine(
+                    $"Redirecting {connection} to {Server.GetHost()}:{server.Port} -> {string.Join(", ", server.Zones)}"
+                );
 
                 connection.Send(new ServerRedirectionPacket
                 {

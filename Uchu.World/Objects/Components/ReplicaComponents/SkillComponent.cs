@@ -14,12 +14,12 @@ namespace Uchu.World
 {
     public class SkillComponent : ReplicaComponent
     {
-        private readonly Dictionary<BehaviorSlot, uint> _activeBehaviors = new Dictionary<BehaviorSlot, uint>();
+        private Dictionary<BehaviorSlot, uint> ActiveBehaviors { get; }
         
-        private readonly Dictionary<uint, ExecutionContext> _handledSkills = new Dictionary<uint, ExecutionContext>();
+        private Dictionary<uint, ExecutionContext> HandledSkills { get; }
         
         // This number is taken from testing and is not concrete.
-        public const float TargetRange = 11.6f;
+        private const float TargetRange = 11.6f;
 
         private uint BehaviorSyncIndex { get; set; }
         
@@ -29,14 +29,18 @@ namespace Uchu.World
 
         public uint SelectedSkill
         {
-            get => _activeBehaviors[BehaviorSlot.Primary];
-            set => _activeBehaviors[BehaviorSlot.Primary] = value;
+            get => ActiveBehaviors[BehaviorSlot.Primary];
+            set => ActiveBehaviors[BehaviorSlot.Primary] = value;
         }
         
         public override ComponentId Id => ComponentId.SkillComponent;
 
         protected SkillComponent()
         {
+            ActiveBehaviors = new Dictionary<BehaviorSlot, uint>();
+
+            HandledSkills = new Dictionary<uint, ExecutionContext>();
+            
             Listen(OnStart, async () =>
             {
                 await using var cdClient = new CdClientContext();
@@ -45,21 +49,21 @@ namespace Uchu.World
                     s => s.ObjectTemplate == GameObject.Lot
                 ).ToArrayAsync();
 
-                DefaultSkillSet = skills
-                    .Where(s => s.SkillID != default)
-                    .Select(s => new SkillEntry
+                DefaultSkillSet = skills.Where(
+                    s => s.SkillID != default
+                ).Select(s => new SkillEntry
                     {
                         SkillId = (uint) (s.SkillID ?? 0),
                         Type = (SkillCastType) (s.CastOnType ?? 0),
                         AiCombatWeight = s.AICombatWeight ?? 0
-                    })
-                    .ToArray();
+                    }
+                ).ToArray();
 
                 await SetupStandardSkills();
                 
                 if (!(GameObject is Player)) return;
 
-                _activeBehaviors[BehaviorSlot.Primary] = 1;
+                ActiveBehaviors[BehaviorSlot.Primary] = 1;
             });
         }
         
@@ -95,8 +99,10 @@ namespace Uchu.World
             
             await using var ctx = new CdClientContext();
 
+            var componentId = await item.GetComponentIdAsync(ComponentId.ItemComponent);
+
             var itemInfo = await ctx.ItemComponentTable.FirstOrDefaultAsync(
-                i => i.Id == item.GetComponentId(ComponentId.ItemComponent)
+                i => i.Id == componentId
             );
             
             if (itemInfo == default) return;
@@ -116,8 +122,10 @@ namespace Uchu.World
 
             await using var ctx = new CdClientContext();
 
+            var componentId = await item.GetComponentIdAsync(ComponentId.ItemComponent);
+
             var itemInfo = await ctx.ItemComponentTable.FirstOrDefaultAsync(
-                i => i.Id == item.GetComponentId(ComponentId.ItemComponent)
+                i => i.Id == componentId
             );
             
             if (itemInfo == default) return;
@@ -134,9 +142,11 @@ namespace Uchu.World
             if (item == default) return;
             
             await using var ctx = new CdClientContext();
+            
+            var componentId = await item.GetComponentIdAsync(ComponentId.ItemComponent);
 
             var itemInfo = await ctx.ItemComponentTable.FirstOrDefaultAsync(
-                i => i.Id == item.GetComponentId(ComponentId.ItemComponent)
+                i => i.Id == componentId
             );
             
             if (itemInfo == default) return;
@@ -148,9 +158,7 @@ namespace Uchu.World
             var onUse = infos.FirstOrDefault(i => i.CastType == SkillCastType.OnUse);
 
             if (onUse == default) return;
-            
-            As<Player>().SendChatMessage($"Adding skill: {onUse.SkillId}");
-            
+
             RemoveSkill(slot);
             
             SetSkill(slot, (uint) onUse.SkillId);
@@ -166,8 +174,6 @@ namespace Uchu.World
 
             if (onEquip == default) return;
             
-            As<Player>().SendChatMessage($"Mount skill: {onEquip.SkillId}");
-            
             var tree = await BehaviorTree.FromLotAsync(item);
 
             await tree.MountAsync(GameObject);
@@ -182,8 +188,6 @@ namespace Uchu.World
             var onEquip = infos.FirstOrDefault(i => i.CastType == SkillCastType.OnEquip);
 
             if (onEquip == default) return;
-            
-            As<Player>().SendChatMessage($"Dismount skill: {onEquip.SkillId}");
             
             var tree = await BehaviorTree.FromLotAsync(item);
             
@@ -219,7 +223,7 @@ namespace Uchu.World
 
         public async Task StartUserSkillAsync(StartSkillMessage message)
         {
-            if (As<Player>() == null) return;
+            if (!(GameObject is Player player)) return;
 
             try
             {
@@ -255,13 +259,13 @@ namespace Uchu.World
                     message.OptionalTarget
                 );
                 
-                _handledSkills[message.SkillHandle] = context;
+                HandledSkills[message.SkillHandle] = context;
                 
                 if (GameObject.TryGetComponent<Stats>(out var stats))
                 {
                     var info = tree.BehaviorIds.First(b => b.SkillId == message.SkillId);
-                    
-                    stats.Imagination = (uint) ((int) stats.Imagination - info.ImaginationCost);
+
+                    await stats.SetImaginationAsync((uint) ((int) stats.Imagination - info.ImaginationCost));
                 }
                 
                 Zone.ExcludingMessage(new EchoStartSkillMessage
@@ -277,7 +281,7 @@ namespace Uchu.World
                     SkillHandle = message.SkillHandle,
                     SkillId = message.SkillId,
                     UsedMouse = message.UsedMouse
-                }, As<Player>());
+                }, player);
             }
             
             await GameObject.GetComponent<MissionInventoryComponent>().UseSkillAsync(
@@ -287,13 +291,15 @@ namespace Uchu.World
 
         public async Task SyncUserSkillAsync(SyncSkillMessage message)
         {
+            if (!(GameObject is Player player)) return;
+
             var stream = new MemoryStream(message.Content);
             using var reader = new BitReader(stream, leaveOpen: true);
 
             await using var writeStream = new MemoryStream();
             using var writer = new BitWriter(writeStream);
 
-            var found = _handledSkills.TryGetValue(message.SkillHandle, out var behavior);
+            var found = HandledSkills.TryGetValue(message.SkillHandle, out var behavior);
             
             if (found)
             {
@@ -312,29 +318,31 @@ namespace Uchu.World
                 Content = message.Content,
                 Done = message.Done,
                 SkillHandle = message.SkillHandle
-            }, As<Player>());
+            }, player);
         }
 
-        public void SetSkill(BehaviorSlot slot, uint skillId)
+        private void SetSkill(BehaviorSlot slot, uint skillId)
         {
-            if (_activeBehaviors.TryGetValue(slot, out var currentSkill))
+            if (!(GameObject is Player player)) return;
+
+            if (ActiveBehaviors.TryGetValue(slot, out var currentSkill))
             {
-                _activeBehaviors.Remove(slot);
+                ActiveBehaviors.Remove(slot);
                 
                 Logger.Information($"Removed skill: [{slot}]: {currentSkill}");
                 
-                As<Player>().Message(new RemoveSkillMessage
+                player.Message(new RemoveSkillMessage
                 {
                     Associate = GameObject,
                     SkillId = currentSkill
                 });
             }
 
-            _activeBehaviors[slot] = skillId;
+            ActiveBehaviors[slot] = skillId;
 
             Logger.Information($"Selected skill: [{slot}]: {skillId}");
             
-            As<Player>().Message(new AddSkillMessage
+            player.Message(new AddSkillMessage
             {
                 Associate = GameObject,
                 CastType = SkillCastType.OnUse,
@@ -342,16 +350,18 @@ namespace Uchu.World
                 SkillId = skillId
             });
         }
-        
-        public void RemoveSkill(BehaviorSlot slot)
+
+        private void RemoveSkill(BehaviorSlot slot)
         {
-            if (_activeBehaviors.TryGetValue(slot, out var currentSkill))
+            if (!(GameObject is Player player)) return;
+
+            if (ActiveBehaviors.TryGetValue(slot, out var currentSkill))
             {
-                _activeBehaviors.Remove(slot);
+                ActiveBehaviors.Remove(slot);
                 
                 Logger.Information($"Removed skill: [{slot}]: {currentSkill}");
                 
-                As<Player>().Message(new RemoveSkillMessage
+                player.Message(new RemoveSkillMessage
                 {
                     Associate = GameObject,
                     SkillId = currentSkill
@@ -374,11 +384,11 @@ namespace Uchu.World
                 _ => throw new ArgumentOutOfRangeException(nameof(slot), slot, null)
             };
 
-            _activeBehaviors[slot] = skillId;
+            ActiveBehaviors[slot] = skillId;
             
             Logger.Information($"Selected default skill: [{slot}]: {skillId}");
             
-            As<Player>().Message(new AddSkillMessage
+            player.Message(new AddSkillMessage
             {
                 Associate = GameObject,
                 CastType = SkillCastType.OnUse,

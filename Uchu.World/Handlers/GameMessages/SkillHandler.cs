@@ -43,7 +43,13 @@ namespace Uchu.World.Handlers.GameMessages
         [PacketHandler]
         public async Task ClientItemConsumedHandler(ClientItemConsumedMessage message, Player player)
         {
-            await player.GetComponent<MissionInventoryComponent>().UseConsumableAsync(message.Item.Lot);
+            await message.Item.ConsumeAsync();
+        }
+
+        [PacketHandler]
+        public async Task UseNonEquipmentItemHandler(UseNonEquipmentItemMessage message, Player player)
+        {
+            await message.Item.ConsumeAsync();
         }
         
         [PacketHandler]
@@ -55,8 +61,6 @@ namespace Uchu.World.Handlers.GameMessages
         [PacketHandler]
         public async Task ServerProjectileImpactHandler(RequestServerProjectileImpactMessage message, Player player)
         {
-            player.SendChatMessage($"Request [{message.Data.Length}]: {message.Projectile} -> {message.Target}");
-            
             if (message.Projectile == 0) return;
 
             var projectile = player.Zone.Objects.OfType<Projectile>().FirstOrDefault(

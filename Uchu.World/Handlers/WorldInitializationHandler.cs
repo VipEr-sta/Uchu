@@ -107,9 +107,11 @@ namespace Uchu.World.Handlers
                 zoneId = 1000;
                 
                 character.LastZone = zoneId;
-
-                await ctx.SaveChangesAsync();
             }
+            
+            character.LandingByRocket = false;
+
+            await ctx.SaveChangesAsync();
 
             Server.SessionCache.SetZone(connection.EndPoint, zoneId);
 
@@ -118,13 +120,12 @@ namespace Uchu.World.Handlers
 
             // Send the character init XML data for this world to the client
             await SendCharacterXmlDataToClient(character, connection, session);
-
+            
+            Logger.Information($"Constructing player");
+            
             var player = await Player.ConstructAsync(character, connection, zone);
-            if (character.LandingByRocket)
-            {
-                character.LandingByRocket = false;
-                await ctx.SaveChangesAsync();
-            }
+            
+            Logger.Information($"Constructed player");
             
             player.Message(new PlayerReadyMessage {Associate = player});
             

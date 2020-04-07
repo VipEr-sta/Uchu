@@ -17,6 +17,8 @@ namespace Uchu.World
                 {
                     await OnInteract(player);
                 });
+                
+                return Task.CompletedTask;
             });
         }
 

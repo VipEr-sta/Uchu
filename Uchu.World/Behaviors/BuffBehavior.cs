@@ -28,26 +28,22 @@ namespace Uchu.World.Behaviors
             Brain = await GetParameter<int>("brain");
         }
 
-        public override Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
         {
-            if (!context.Associate.TryGetComponent<Stats>(out var stats)) return Task.CompletedTask;
+            if (!context.Associate.TryGetComponent<Stats>(out var stats)) return;
 
-            stats.MaxHealth += (uint) Life;
-            stats.MaxArmor += (uint) Armor;
-            stats.MaxImagination += (uint) Imagination;
-
-            return Task.CompletedTask;
+            await stats.SetMaxHealthAsync(stats.MaxHealth + (uint) Life);
+            await stats.SetMaxArmorAsync(stats.MaxArmor + (uint) Armor);
+            await stats.SetMaxImaginationAsync(stats.MaxImagination + (uint) Imagination);
         }
 
-        public override Task DismantleAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task DismantleAsync(ExecutionContext context, ExecutionBranchContext branchContext)
         {
-            if (!context.Associate.TryGetComponent<Stats>(out var stats)) return Task.CompletedTask;
+            if (!context.Associate.TryGetComponent<Stats>(out var stats)) return;
 
-            stats.MaxHealth -= (uint) Life;
-            stats.MaxArmor -= (uint) Armor;
-            stats.MaxImagination -= (uint) Imagination;
-            
-            return Task.CompletedTask;
+            await stats.SetMaxHealthAsync(stats.MaxHealth - (uint) Life);
+            await stats.SetMaxArmorAsync(stats.MaxArmor - (uint) Armor);
+            await stats.SetMaxImaginationAsync(stats.MaxImagination - (uint) Imagination);
         }
     }
 }

@@ -18,8 +18,8 @@ namespace Uchu.World.Behaviors
             await base.ExecuteAsync(context, branchContext);
 
             if (!branchContext.Target.TryGetComponent<Stats>(out var stats)) return;
-            
-            stats.Imagination = (uint) ((int) stats.Imagination + Imagination);
+
+            await stats.SetImaginationAsync((uint) ((int) stats.Imagination + Imagination));
         }
     }
 }

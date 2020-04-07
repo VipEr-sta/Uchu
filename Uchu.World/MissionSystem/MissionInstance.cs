@@ -133,9 +133,14 @@ namespace Uchu.World.MissionSystem
 
             foreach (var task in obtainTasks)
             {
-                var toGive = items.Where(i => task.Targets.Contains((int) i.Lot)).Sum(i => i.Count);
-
-                for (var i = 0; i < toGive; i++)
+                var obtained = 0u;
+                
+                foreach (var item in items.Where(i => task.Targets.Contains((int) i.Lot)))
+                {
+                    obtained += await item.GetCountAsync();
+                }
+                
+                for (var i = 0; i < obtained; i++)
                 {
                     await task.Progress(task.Target);
                     
@@ -235,9 +240,13 @@ namespace Uchu.World.MissionSystem
             {
                 // Mission
 
-                Player.Currency += currency;
+                var playerCurrency = await Player.GetCurrencyAsync();
 
-                Player.UniverseScore += score;
+                await Player.SetCurrencyAsync(playerCurrency + currency);
+
+                var playerScore = await Player.GetUniverseScoreAsync();
+
+                await Player.SetUniverseScoreAsync(playerScore + score);
             }
             else
             {

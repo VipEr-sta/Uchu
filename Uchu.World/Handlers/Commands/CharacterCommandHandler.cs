@@ -79,19 +79,21 @@ namespace Uchu.World.Handlers.Commands
 
         [CommandHandler(Signature = "coin", Help = "Add or remove coin from yourself",
             GameMasterLevel = GameMasterLevel.Admin)]
-        public string ChangeCoin(string[] arguments, Player player)
+        public async Task<string> ChangeCoin(string[] arguments, Player player)
         {
             if (arguments.Length != 1) return "coin <delta>";
 
             if (!int.TryParse(arguments[0], out var delta) || delta == default) return "Invalid <delta>";
 
-            player.Currency += delta;
+            var currency = await player.GetCurrencyAsync();
+
+            await player.SetCurrencyAsync(currency + delta);
 
             return $"Successfully {(delta > 0 ? "added" : "removed")} {delta} coins";
         }
 
         [CommandHandler(Signature = "spawn", Help = "Spawn an object", GameMasterLevel = GameMasterLevel.Admin)]
-        public string Spawn(string[] arguments, Player player)
+        public async Task<string> Spawn(string[] arguments, Player player)
         {
             if (arguments.Length == default)
                 return "spawn <lot> <x(optional)> <y(optional)> <z(optional)>";
@@ -126,7 +128,7 @@ namespace Uchu.World.Handlers.Commands
 
             var rotation = player.Transform.Rotation;
 
-            var obj = GameObject.Instantiate(new LevelObjectTemplate
+            var obj = await GameObject.InstantiateAsync(new LevelObjectTemplate
             {
                 Lot = lot,
                 Position = position,
@@ -135,7 +137,7 @@ namespace Uchu.World.Handlers.Commands
                 LegoInfo = new LegoDataDictionary()
             }, player.Zone);
 
-            Object.Start(obj);
+            await Object.StartAsync(obj);
             GameObject.Construct(obj);
 
             if (factionSided)
@@ -218,7 +220,7 @@ namespace Uchu.World.Handlers.Commands
         }
 
         [CommandHandler(Signature = "near", Help = "Get nearest object", GameMasterLevel = GameMasterLevel.Player)]
-        public string Near(string[] arguments, Player player)
+        public async Task<string> Near(string[] arguments, Player player)
         {
             var current = player.Zone.GameObjects[0];
 
@@ -269,7 +271,7 @@ namespace Uchu.World.Handlers.Commands
 
             if (arguments.Contains("-l")) info.Append($"\nLayers: {Convert.ToString(current.Layer.Value, 2)}");
 
-            var components = arguments.Contains("-r") ? current.ReplicaComponents : current.GetAllComponents();
+            var components = arguments.Contains("-r") ? current.ReplicaComponents.ToArray() : current.GetAllComponents();
 
             if (!arguments.Contains("-c") && !arguments.Contains("-r")) goto finish;
 
@@ -290,7 +292,7 @@ namespace Uchu.World.Handlers.Commands
 
             if (arguments.Contains("-in"))
             {
-                current.OnInteract.Invoke(player);
+                await current.OnInteract.InvokeAsync(player);
             }
 
             finish:
@@ -332,13 +334,15 @@ namespace Uchu.World.Handlers.Commands
         }
 
         [CommandHandler(Signature = "score", Help = "Change your U-score", GameMasterLevel = GameMasterLevel.Admin)]
-        public string Score(string[] arguments, Player player)
+        public async Task<string> Score(string[] arguments, Player player)
         {
             if (arguments.Length != 1) return "score <delta>";
 
             if (!int.TryParse(arguments[0], out var delta)) return "Invalid <delta>";
 
-            player.UniverseScore += delta;
+            var score = await player.GetUniverseScoreAsync();
+
+            await player.SetUniverseScoreAsync(score + delta);
 
             GameObject.Serialize(player);
 
@@ -346,13 +350,13 @@ namespace Uchu.World.Handlers.Commands
         }
 
         [CommandHandler(Signature = "level", Help = "Set your level", GameMasterLevel = GameMasterLevel.Admin)]
-        public string Level(string[] arguments, Player player)
+        public async Task<string> Level(string[] arguments, Player player)
         {
             if (arguments.Length != 1) return "level <level>";
 
             if (!long.TryParse(arguments[0], out var level)) return "Invalid <level>";
 
-            player.Level = level;
+            await player.SetLevelAsync(level);
 
             GameObject.Serialize(player);
 
@@ -360,7 +364,7 @@ namespace Uchu.World.Handlers.Commands
         }
         
         [CommandHandler(Signature = "stat", Help = "Set a stat", GameMasterLevel = GameMasterLevel.Admin)]
-        public string Stat(string[] arguments, Player player)
+        public async Task<string> Stat(string[] arguments, Player player)
         {
             if (arguments.Length != 2) return "stat <stat> <value>";
 
@@ -372,22 +376,22 @@ namespace Uchu.World.Handlers.Commands
             switch (stat)
             {
                 case "health":
-                    stats.Health = (uint) value;
+                    await stats.SetHealthAsync((uint) value);
                     break;
                 case "maxhealth":
-                    stats.MaxHealth = (uint) value;
+                    await stats.SetMaxHealthAsync((uint) value);
                     break;
                 case "armor":
-                    stats.Armor = (uint) value;
+                    await stats.SetArmorAsync((uint) value);
                     break;
                 case "maxarmor":
-                    stats.MaxArmor = (uint) value;
+                    await stats.SetMaxArmorAsync((uint) value);
                     break;
                 case "imagination":
-                    stats.Imagination = (uint) value;
+                    await stats.SetImaginationAsync((uint) value);
                     break;
                 case "maximagination":
-                    stats.MaxImagination = (uint) value;
+                    await stats.SetMaxImaginationAsync((uint) value);
                     break;
                 default:
                     return $"{stat} is not a valid <stat>";
@@ -490,14 +494,14 @@ namespace Uchu.World.Handlers.Commands
             
             for (var i = 0; i < 10; i++)
             {
-                var brick = GameObject.Instantiate(
+                var brick = await GameObject.InstantiateAsync(
                     player.Zone,
                     31,
                     player.Transform.Position + Vector3.UnitY * (7 + i),
                     Quaternion.Identity
                 );
 
-                Object.Start(brick);
+                await Object.StartAsync(brick);
                 GameObject.Construct(brick);
 
                 bricks.Add(brick);
@@ -511,7 +515,7 @@ namespace Uchu.World.Handlers.Commands
 
             foreach (var brick in bricks)
             {
-                Object.Destroy(brick);
+                await Object.DestroyAsync(brick);
             }
 
             return $"Spawned thing";
@@ -614,7 +618,7 @@ namespace Uchu.World.Handlers.Commands
 
             if (type == default) return "Invalid <type>";
 
-            player.AddComponent(type);
+            player.AddComponentAsync(type);
 
             return $"Successfully added {type.Name} to {player}";
         }
@@ -933,11 +937,11 @@ namespace Uchu.World.Handlers.Commands
         }
 
         [CommandHandler(Signature = "clear", Help = "Clears your inventory", GameMasterLevel = GameMasterLevel.Admin)]
-        public string Clear(string[] arguments, Player player)
+        public async Task<string> Clear(string[] arguments, Player player)
         {
             foreach (var item in player.GetComponent<InventoryManagerComponent>()[InventoryType.Items].Items)
             {
-                item.Count = 0;
+                await item.SetCountAsync(0);
             }
 
             return "Cleared inventory";
@@ -993,15 +997,15 @@ namespace Uchu.World.Handlers.Commands
         }
 
         [CommandHandler(Signature = "mimic", Help = "Active mimic test", GameMasterLevel = GameMasterLevel.Admin)]
-        public string Mimic(string[] arguments, Player player)
+        public async Task<string> Mimic(string[] arguments, Player player)
         {
             if (arguments.Length == default) return "mimic <lot>";
 
             if (!int.TryParse(arguments[0], out var lot)) return "Invalid <lot>";
 
-            var gameObject = MirrorGameObject.Instantiate(lot, player);
+            var gameObject = await MirrorGameObject.InstantiateAsync(lot, player);
 
-            Object.Start(gameObject);
+            await Object.StartAsync(gameObject);
             GameObject.Construct(gameObject);
 
             return $"Active mimic on: {gameObject}";

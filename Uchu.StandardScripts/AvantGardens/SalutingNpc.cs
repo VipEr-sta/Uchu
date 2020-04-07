@@ -27,6 +27,8 @@ namespace Uchu.StandardScripts.AvantGardens
                 Listen(gameObject.OnInteract, player =>
                 {
                     gameObject.Animate("salutePlayer");
+                    
+                    return Task.CompletedTask;
                 });
             }
             

@@ -19,7 +19,7 @@ namespace Uchu.World.Behaviors
 
             if (!branchContext.Target.TryGetComponent<Stats>(out var stats)) return;
 
-            stats.Health = (uint) ((int) stats.Health + Health);
+            await stats.SetHealthAsync((uint) ((int) stats.Health + Health));
         }
     }
 }

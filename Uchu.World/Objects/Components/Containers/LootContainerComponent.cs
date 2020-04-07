@@ -62,10 +62,11 @@ namespace Uchu.World
                     entries.Remove(entry);
 
                     var result = Random.NextDouble();
-                    
-                    if (!(result <= matrix.Percentage)) continue;
 
-                    yield return entry.Lot;
+                    if (result <= matrix.Percentage)
+                    {
+                        yield return entry.Lot;
+                    }
                 }
             }
         }
@@ -146,7 +147,7 @@ namespace Uchu.World
         {
             await using var ctx = new CdClientContext();
 
-            var destructible = GameObject.Lot.GetComponentId(ComponentId.DestructibleComponent);
+            var destructible = await GameObject.Lot.GetComponentIdAsync(ComponentId.DestructibleComponent);
 
             if (destructible != default)
             {
@@ -163,7 +164,7 @@ namespace Uchu.World
                 return;
             }
 
-            var package = GameObject.Lot.GetComponentId(ComponentId.PackageComponent);
+            var package = await GameObject.Lot.GetComponentIdAsync(ComponentId.PackageComponent);
 
             if (package != default)
             {

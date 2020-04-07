@@ -13,6 +13,8 @@ namespace Uchu.World
                 var player = (Player) Author;
 
                 Listen(player.OnPositionUpdate, MimicMovement);
+
+                return Task.CompletedTask;
             });
             
             Listen(OnDestroyed, () =>
@@ -25,12 +27,19 @@ namespace Uchu.World
 
                     otherFilter.Include(Author);
                 }
+                
+                return Task.CompletedTask;
             });
         }
         
-        public static MirrorGameObject Instantiate(int lot, Player author)
+        public static async Task<MirrorGameObject> InstantiateAsync(int lot, Player author)
         {
-            var gameObject = Instantiate<MirrorGameObject>(author.Zone, lot, author.Transform.Position, author.Transform.Rotation);
+            var gameObject = await InstantiateAsync<MirrorGameObject>(
+                author.Zone,
+                lot,
+                author.Transform.Position,
+                author.Transform.Rotation
+            );
 
             gameObject.Author = author;
 

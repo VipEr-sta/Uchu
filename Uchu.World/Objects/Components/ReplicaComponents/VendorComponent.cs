@@ -26,9 +26,14 @@ namespace Uchu.World
         {
             Listen(OnStart, async () =>
             {
-                await SetupEntries();
+                await SetupEntriesAsync();
                 
-                Listen(GameObject.OnInteract, OnInteract);
+                Listen(GameObject.OnInteract, player =>
+                {
+                    OnInteract(player);
+                    
+                    return Task.CompletedTask;
+                });
             });
         }
 
@@ -56,22 +61,25 @@ namespace Uchu.World
             });
         }
 
-        private async Task SetupEntries()
+        private async Task SetupEntriesAsync()
         {
-            var componentId = GameObject.Lot.GetComponentId(ComponentId.VendorComponent);
+            await using var ctx = new CdClientContext();
+            
+            var componentId = await GameObject.Lot.GetComponentIdAsync(ComponentId.VendorComponent);
 
-            await using var cdClient = new CdClientContext();
+            var vendorComponent = await ctx.VendorComponentTable.FirstAsync(
+                c => c.Id == componentId
+            );
 
-            var vendorComponent = await cdClient.VendorComponentTable.FirstAsync(c => c.Id == componentId);
-
-            var matrices =
-                cdClient.LootMatrixTable.Where(l => l.LootMatrixIndex == vendorComponent.LootMatrixIndex);
+            var matrices = ctx.LootMatrixTable.Where(
+                l => l.LootMatrixIndex == vendorComponent.LootMatrixIndex
+            );
 
             var shopItems = new List<ShopEntry>();
 
             foreach (var matrix in matrices)
             {
-                shopItems.AddRange(cdClient.LootTableTable.Where(
+                shopItems.AddRange(ctx.LootTableTable.Where(
                     l => l.LootTableIndex == matrix.LootTableIndex
                 ).ToArray().Select(lootTable =>
                 {
@@ -89,21 +97,25 @@ namespace Uchu.World
             Entries = shopItems.ToArray();
         }
 
-        public async Task Buy(Lot lot, uint count, Player player)
+        public async Task BuyAsync(Lot lot, uint count, Player player)
         {
             await using var ctx = new CdClientContext();
 
+            var componentId = await lot.GetComponentIdAsync(ComponentId.ItemComponent);
+
             var itemComponent = await ctx.ItemComponentTable.FirstAsync(
-                i => i.Id == lot.GetComponentId(ComponentId.ItemComponent)
+                i => i.Id == componentId
             );
             
             if (count == default || itemComponent.BaseValue <= 0) return;
 
             var cost = (uint) ((itemComponent.BaseValue ?? 0) * count);
-            
-            if (cost > player.Currency) return;
 
-            player.Currency -= cost;
+            var currency = await player.GetCurrencyAsync();
+            
+            if (cost > currency) return;
+
+            await player.SetCurrencyAsync(currency - cost);
             
             await player.GetComponent<InventoryManagerComponent>().AddItemAsync(lot, count);
             
@@ -116,7 +128,7 @@ namespace Uchu.World
             await OnBuy.InvokeAsync(lot, count, player);
         }
 
-        public async Task Sell(Item item, uint count, Player player)
+        public async Task SellAsync(Item item, uint count, Player player)
         {
             var itemComponent = item.ItemComponent;
             
@@ -136,7 +148,9 @@ namespace Uchu.World
                     (itemComponent.SellMultiplier ?? 0.1f)
                 ) * count;
 
-            player.Currency += (uint) returnCurrency;
+            var currency = await player.GetCurrencyAsync();
+
+            await player.SetCurrencyAsync(currency + (uint) returnCurrency);
             
             player.Message(new VendorTransactionResultMessage
             {
@@ -147,7 +161,7 @@ namespace Uchu.World
             await OnSell.InvokeAsync(item, count, player);
         }
 
-        public async Task Buyback(Item item, uint count, Player player)
+        public async Task BuybackAsync(Item item, uint count, Player player)
         {
             var itemComponent = item.ItemComponent;
             
@@ -159,13 +173,15 @@ namespace Uchu.World
                     (itemComponent.SellMultiplier ?? 0.1f)
                 ) * count;
 
-            if (cost > player.Currency) return;
+            var currency = await player.GetCurrencyAsync();
+            
+            if (cost > currency) return;
 
-            player.Currency -= cost;
+            await player.SetCurrencyAsync(currency - cost);
             
             var manager = player.GetComponent<InventoryManagerComponent>();
             
-            manager.RemoveItem(item.Lot, count, InventoryType.VendorBuyback);
+            await manager.RemoveItemAsync(item.Lot, count, InventoryType.VendorBuyback);
             
             await manager.AddItemAsync(item.Lot, count);
             

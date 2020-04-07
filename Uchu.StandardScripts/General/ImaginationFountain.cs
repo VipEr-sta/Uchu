@@ -8,7 +8,7 @@ namespace Uchu.StandardScripts.General
 {
     public class ImaginationFountain : NativeScript
     {
-        private readonly (Lot, int)[] ImaginationDrops = {
+        private readonly (Lot, int)[] _imaginationDrops = {
             (Lot.Imagination, 1),
             (Lot.TwoImagination, 2),
             (Lot.ThreeImagination, 3),
@@ -20,7 +20,7 @@ namespace Uchu.StandardScripts.General
         {
             foreach (var gameObject in Zone.GameObjects.Where(g => g.Lot == 12940))
             {
-                Listen(gameObject.OnInteract, player =>
+                Listen(gameObject.OnInteract, async player =>
                 {
                     if (!player.TryGetComponent<Stats>(out var stats)) return;
 
@@ -28,15 +28,15 @@ namespace Uchu.StandardScripts.General
 
                     while (toGive > 0)
                     {
-                        var array = ImaginationDrops.Where((_, i) => i >= toGive).ToArray();
+                        var array = _imaginationDrops.Where((_, i) => i >= toGive).ToArray();
 
-                        var (lot, cost) = array.Length == 0 ? ImaginationDrops.Last() : array.Max();
+                        var (lot, cost) = array.Length == 0 ? _imaginationDrops.Last() : array.Max();
 
                         toGive -= cost;
 
-                        var loot = InstancingUtil.Loot(lot, player, gameObject, gameObject.Transform.Position+ Vector3.UnitY * 3);
+                        var loot = await InstancingUtilities.InstantiateLootAsync(lot, player, gameObject, gameObject.Transform.Position+ Vector3.UnitY * 3);
 
-                        Start(loot);
+                        await StartAsync(loot);
                     }
                 });
             }

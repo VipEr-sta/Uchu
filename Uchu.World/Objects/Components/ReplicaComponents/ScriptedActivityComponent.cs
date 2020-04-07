@@ -61,22 +61,22 @@ namespace Uchu.World
 
         public async Task DropLootAsync(Player owner)
         {
-            var container = GameObject.AddComponent<LootContainerComponent>();
+            var container = await GameObject.AddComponentAsync<LootContainerComponent>();
 
             await container.CollectDetailsAsync();
 
             foreach (var lot in container.GenerateLootYields())
             {
-                var drop = InstancingUtil.Loot(lot, owner, GameObject, Transform.Position);
+                var drop = await InstancingUtilities.InstantiateLootAsync(lot, owner, GameObject, Transform.Position);
 
-                Start(drop);
+                await StartAsync(drop);
             }
 
             var currency = container.GenerateCurrencyYields();
 
             if (currency > 0)
             {
-                InstancingUtil.Currency(currency, owner, GameObject, Transform.Position);
+                InstancingUtilities.InstantiateCurrency(currency, owner, GameObject, Transform.Position);
             }
         }
 

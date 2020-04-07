@@ -59,8 +59,10 @@ namespace Uchu.World
 
                 await using var cdClient = new CdClientContext();
 
+                var componentId = await GameObject.Lot.GetComponentIdAsync(ComponentId.QuickBuildComponent);
+                
                 var clientComponent = await cdClient.RebuildComponentTable.FirstOrDefaultAsync(
-                    r => r.Id == GameObject.Lot.GetComponentId(ComponentId.QuickBuildComponent)
+                    r => r.Id == componentId
                 );
 
                 if (clientComponent == default)
@@ -85,7 +87,7 @@ namespace Uchu.World
                 // It is required to be able to start the quickbuild.
                 //
                 
-                Activator = GameObject.Instantiate(new LevelObjectTemplate
+                Activator = await GameObject.InstantiateAsync(new LevelObjectTemplate
                 {
                     Lot = 6604,
                     Position = ActivatorPosition,
@@ -94,15 +96,23 @@ namespace Uchu.World
                     LegoInfo = new LegoDataDictionary()
                 }, GameObject);
 
-                Start(Activator);
+                await StartAsync(Activator);
                 
                 GameObject.Construct(Activator);
                 GameObject.Serialize(GameObject);
 
-                Listen(GameObject.OnInteract, StartRebuild);
+                Listen(GameObject.OnInteract, (player) =>
+                {
+                    StartRebuild(player);
+                    
+                    return Task.CompletedTask;
+                });
             });
             
-            Listen(OnDestroyed, () => { Destroy(Activator); });
+            Listen(OnDestroyed, async () =>
+            {
+                await DestroyAsync(Activator);
+            });
         }
         
         public override void Construct(BitWriter writer)
@@ -213,7 +223,7 @@ namespace Uchu.World
                 Interval = 1000
             };
 
-            _imaginationTimer.Elapsed += (sender, args) =>
+            _imaginationTimer.Elapsed += async (sender, args) =>
             {
                 if (playerStats.Imagination == default)
                 {
@@ -229,7 +239,7 @@ namespace Uchu.World
                 {
                     _taken++;
 
-                    playerStats.Imagination--;
+                    await playerStats.SetImaginationAsync(playerStats.Imagination - 1);
 
                     GameObject.Serialize(GameObject);
 

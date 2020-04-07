@@ -4,8 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
-using System.Timers;
 using InfectedRose.Luz;
 using InfectedRose.Lvl;
 using InfectedRose.Utilities;
@@ -16,6 +16,7 @@ using Uchu.Python;
 using Uchu.World.AI;
 using Uchu.World.Client;
 using Uchu.World.Scripting;
+using Timer = System.Timers.Timer;
 
 namespace Uchu.World
 {
@@ -27,12 +28,21 @@ namespace Uchu.World
 
         private const int TicksPerSecondLimit = 20;
 
-        private long _passedTickTime;
-        private bool _running;
-        private int _ticks;
+        private SemaphoreSlim ObjectsLock { get; }
+        
+        private long PassedTickTime { get; set; }
+        private bool Running { get; set; }
+        private int Ticks { get; set; }
 
         public Zone(ZoneInfo zoneInfo, Server server, ushort instanceId, uint cloneId)
         {
+            ObjectsLock = new SemaphoreSlim(1, 1);
+            
+            OnPlayerLoad = new AsyncEvent<Player>();
+            OnObject = new AsyncEvent<Object>();
+            OnTick = new AsyncEvent();
+            OnChatMessage = new AsyncEvent<Player, string>();
+            
             Zone = this;
             ZoneInfo = zoneInfo;
             Server = server;
@@ -45,7 +55,12 @@ namespace Uchu.World
             ManagedObjects = new List<Object>();
             SpawnedObjects = new List<GameObject>();
 
-            Listen(OnDestroyed, () => { _running = false; });
+            Listen(OnDestroyed, () =>
+            {
+                Running = false;
+                
+                return Task.CompletedTask;
+            });
         }
 
         //
@@ -108,13 +123,13 @@ namespace Uchu.World
         // Events
         //
 
-        public AsyncEvent<Player> OnPlayerLoad { get; } = new AsyncEvent<Player>();
+        public AsyncEvent<Player> OnPlayerLoad { get; }
 
-        public Event<Object> OnObject { get; } = new Event<Object>();
+        public AsyncEvent<Object> OnObject { get; }
 
-        public AsyncEvent OnTick { get; } = new AsyncEvent();
+        public AsyncEvent OnTick { get; }
 
-        public AsyncEvent<Player, string> OnChatMessage { get; } = new AsyncEvent<Player, string>();
+        public AsyncEvent<Player, string> OnChatMessage { get; }
 
         #region Initializing
 
@@ -122,83 +137,37 @@ namespace Uchu.World
         {
             Checksum = ZoneInfo.LuzFile.GenerateChecksum(ZoneInfo.LvlFiles);
 
-            Logger.Information($"Checksum: 0x{Checksum:X}");
-
-            Logger.Information($"Collecting objects for {ZoneId}");
-
-            var objects = new List<LevelObjectTemplate>();
-
-            foreach (var lvlFile in ZoneInfo.LvlFiles.Where(lvlFile => lvlFile.LevelObjects?.Templates != default))
-                objects.AddRange(lvlFile.LevelObjects.Templates);
-
-            Logger.Information($"Loading {objects.Count} objects for {ZoneId}");
-
-            var tasks = new List<Task>();
-
-            NavMeshManager = new NavMeshManager(this, Server.Configuration.GamePlayConfiguration.PathFinding);
-
-            if (NavMeshManager.Enabled)
-            {
-                Logger.Information("Generating navigation way points.");
-
-                await NavMeshManager.GeneratePointsAsync();
-
-                Logger.Information("Finished generating navigation way points.");
-            }
-
             ZoneId = (ZoneId) ZoneInfo.LuzFile.WorldId;
 
             SpawnPosition = ZoneInfo.LuzFile.SpawnPoint;
 
             SpawnRotation = ZoneInfo.LuzFile.SpawnRotation;
 
+            Logger.Information($"Checksum: 0x{Checksum:X}");
+
+            Logger.Information($"Collecting objects for {ZoneId}");
+
+            await SetupNavigationAsync();
+
+            await SpawnObjectsAsync();
+
+            await RunManagedScripts();
+            
+            //
+            // Clean up useless variables
+            //
+            
             ZoneInfo.LvlFiles.Clear();
 
             ZoneInfo.TerrainFile = default;
+            
+            Loaded = true;
 
-            foreach (var levelObject in objects)
-            {
-                Logger.Information($"Loading {levelObject.Lot}");
+            return ExecuteUpdateAsync();
+        }
 
-                var task = Task.Run(() =>
-                {
-                    try
-                    {
-                        SpawnLevelObject(levelObject);
-                    }
-                    catch (Exception e)
-                    {
-                        Logger.Error(e);
-                    }
-                });
-
-                tasks.Add(task);
-            }
-
-            if (ZoneInfo.LuzFile.PathData != default)
-            {
-                foreach (var path in ZoneInfo.LuzFile.PathData.OfType<LuzSpawnerPath>())
-                {
-                    var task = Task.Run(() =>
-                    {
-                        try
-                        {
-                            SpawnPath(path);
-                        }
-                        catch (Exception e)
-                        {
-                            Logger.Error(e);
-                        }
-                    });
-
-                    tasks.Add(task);
-                }
-            }
-
-            await Task.WhenAll(tasks);
-
-            Logger.Information($"Loaded {objects.Count} objects for {ZoneId}");
-
+        private async Task RunManagedScripts()
+        {
             //
             // Load zone scripts
             //
@@ -206,6 +175,7 @@ namespace Uchu.World
             await ScriptManager.LoadDefaultScriptsAsync();
 
             foreach (var scriptPack in ScriptManager.ScriptPacks)
+            {
                 try
                 {
                     Logger.Information($"Running: {scriptPack.Name}");
@@ -214,19 +184,63 @@ namespace Uchu.World
                 }
                 catch (Exception e)
                 {
-                    Logger.Information(e);
+                    Logger.Error(e);
                 }
-
-            Loaded = true;
-
-            objects.Clear();
-
-            return ExecuteUpdateAsync();
+            }
         }
 
-        private void SpawnLevelObject(LevelObjectTemplate levelObject)
+        private async Task SetupNavigationAsync()
         {
-            var obj = GameObject.Instantiate(levelObject, this);
+            NavMeshManager = new NavMeshManager(this, Server.Configuration.GamePlayConfiguration.PathFinding);
+
+            if (NavMeshManager.Enabled)
+            {
+                await NavMeshManager.GeneratePointsAsync();
+            }
+        }
+
+        private async Task SpawnObjectsAsync()
+        {
+            var objects = new List<LevelObjectTemplate>();
+
+            foreach (var lvlFile in ZoneInfo.LvlFiles.Where(lvlFile => lvlFile.LevelObjects?.Templates != default))
+                objects.AddRange(lvlFile.LevelObjects.Templates);
+            
+            Logger.Information($"Loading {objects.Count} objects");
+            
+            foreach (var levelObject in objects)
+            {
+                try
+                {
+                    await SpawnLevelObjectAsync(levelObject);
+                }
+                catch (Exception e)
+                {
+                    Logger.Error(e);
+                }
+            }
+
+            if (ZoneInfo.LuzFile.PathData != default)
+            {
+                foreach (var path in ZoneInfo.LuzFile.PathData.OfType<LuzSpawnerPath>())
+                {
+                    try
+                    {
+                        await SpawnPathAsync(path);
+                    }
+                    catch (Exception e)
+                    {
+                        Logger.Error(e);
+                    }
+                }
+            }
+            
+            Logger.Information($"Loaded {Objects.Length} objects");
+        }
+
+        private async Task SpawnLevelObjectAsync(LevelObjectTemplate levelObject)
+        {
+            var obj = await GameObject.InstantiateAsync(levelObject, this);
 
             SpawnerComponent spawner = default;
 
@@ -236,18 +250,18 @@ namespace Uchu.World
                 obj.Layer = StandardLayer.Hidden;
             else if (!obj.TryGetComponent(out spawner)) obj.Layer = StandardLayer.Hidden;
 
-            Start(obj);
+            await StartAsync(obj);
 
             //
             // Only spawns should get constructed on the client.
             //
 
-            spawner?.SpawnCluster();
+            spawner?.SpawnClusterAsync();
         }
 
-        private void SpawnPath(LuzSpawnerPath spawnerPath)
+        private async Task SpawnPathAsync(LuzSpawnerPath spawnerPath)
         {
-            var obj = InstancingUtil.Spawner(spawnerPath, this);
+            var obj = await InstancingUtilities.InstantiateSpawnerAsync(spawnerPath, this);
 
             if (obj == null) return;
 
@@ -261,9 +275,9 @@ namespace Uchu.World
                 Rotation = Quaternion.Identity
             }).ToList();
 
-            Start(obj);
+            await StartAsync(obj);
 
-            spawner.SpawnCluster();
+            await spawner.SpawnClusterAsync();
         }
 
         #endregion
@@ -317,7 +331,7 @@ namespace Uchu.World
 
         #region Register
 
-        internal async Task RegisterPlayer(Player player)
+        internal async Task RegisterPlayerAsync(Player player)
         {
             await OnPlayerLoad.InvokeAsync(player);
 
@@ -329,13 +343,15 @@ namespace Uchu.World
             }
         }
 
-        internal void RegisterObject(Object obj)
+        internal async Task RegisterObjectAsync(Object obj)
         {
-            lock (ManagedObjects)
+            await ObjectsLock.WaitAsync();
+
+            try
             {
                 if (ManagedObjects.Contains(obj)) return;
 
-                OnObject.Invoke(obj);
+                await OnObject.InvokeAsync(obj);
 
                 ManagedObjects.Add(obj);
 
@@ -343,11 +359,17 @@ namespace Uchu.World
 
                 if ((gameObject.Id.Flags & ObjectIdFlags.Spawned) != 0) SpawnedObjects.Add(gameObject);
             }
+            finally
+            {
+                ObjectsLock.Release();
+            }
         }
 
-        internal void UnregisterObject(Object obj)
+        internal async Task UnregisterObjectAsync(Object obj)
         {
-            lock (ManagedObjects)
+            await ObjectsLock.WaitAsync();
+
+            try
             {
                 if (!ManagedObjects.Contains(obj)) return;
 
@@ -362,6 +384,10 @@ namespace Uchu.World
                 if (updated == default) return;
 
                 UpdatedObjects.Remove(updated);
+            }
+            finally
+            {
+                ObjectsLock.Release();
             }
         }
 
@@ -403,6 +429,8 @@ namespace Uchu.World
             foreach (var recipient in recipients)
             {
                 if (!recipient.Perspective.TryGetNetworkId(gameObject, out var id)) continue;
+                
+                if (id == 0) return;
 
                 using var stream = new MemoryStream();
                 using var writer = new BitWriter(stream);
@@ -510,19 +538,21 @@ namespace Uchu.World
 
             timer.Elapsed += (sender, args) =>
             {
-                if (_ticks > 0)
-                    Logger.Debug($"TPS: {_ticks}/{TicksPerSecondLimit} TPT: {_passedTickTime / _ticks} ms");
-                _passedTickTime = 0;
-                _ticks = 0;
+                if (Ticks > 0)
+                    Logger.Debug($"TPS: {Ticks}/{TicksPerSecondLimit} TPT: {PassedTickTime / Ticks} ms");
+                PassedTickTime = 0;
+                Ticks = 0;
             };
 
             timer.Start();
+            
+            Logger.Information("Running gameloop");
 
             return Task.Run(async () =>
             {
-                _running = true;
+                Running = true;
 
-                while (_running)
+                while (Running)
                 {
                     if (Players.Length == 0)
                     {
@@ -531,7 +561,7 @@ namespace Uchu.World
                         continue;
                     }
 
-                    if (_ticks >= TicksPerSecondLimit) continue;
+                    if (Ticks >= TicksPerSecondLimit) continue;
 
                     var start = DateTimeOffset.Now.ToUnixTimeMilliseconds();
 
@@ -557,13 +587,13 @@ namespace Uchu.World
                         }
                     }
 
-                    _ticks++;
+                    Ticks++;
 
                     var passedMs = DateTimeOffset.Now.ToUnixTimeMilliseconds() - start;
 
                     DeltaTime = passedMs / 1000f;
 
-                    _passedTickTime += passedMs;
+                    PassedTickTime += passedMs;
                 }
             });
         }

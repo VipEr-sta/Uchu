@@ -32,14 +32,14 @@ namespace Uchu.World.Handlers.GameMessages
             }
             else
             {
-                message.TargetObject?.OnInteract.Invoke(player);
+                await message.TargetObject?.OnInteract.InvokeAsync(player);
             }
         }
 
         [PacketHandler]
-        public void RequestResurrectHandler(RequestResurrectMessage message, Player player)
+        public async Task RequestResurrectHandler(RequestResurrectMessage message, Player player)
         {
-            player.GetComponent<DestructibleComponent>().Resurrect();
+            await player.GetComponent<DestructibleComponent>().ResurrectAsync();
         }
 
         [PacketHandler]

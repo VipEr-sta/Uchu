@@ -12,9 +12,9 @@ namespace Uchu.World.Scripting.Native
 
         protected Server Server => Zone.Server;
 
-        protected static void Start(Object obj) => Object.Start(obj);
+        protected static async Task StartAsync(Object obj) => await Object.StartAsync(obj);
         
-        protected static void Destroy(Object obj) => Object.Destroy(obj);
+        protected static async Task DestroyAsync(Object obj) => await Object.DestroyAsync(obj);
 
         protected static void Construct(GameObject gameObject) => GameObject.Construct(gameObject);
         

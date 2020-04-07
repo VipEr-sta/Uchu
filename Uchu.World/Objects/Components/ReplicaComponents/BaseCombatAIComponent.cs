@@ -63,6 +63,8 @@ namespace Uchu.World
                 {
                     await CalculateCombat();
                 }, 1);
+                
+                return Task.CompletedTask;
             });
         }
 

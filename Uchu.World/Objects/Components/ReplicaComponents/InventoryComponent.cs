@@ -16,30 +16,31 @@ namespace Uchu.World
         
         public Dictionary<EquipLocation, EquippedItem> Items { get; }
         
-        public AsyncEvent<Item> OnEquipped { get; } = new AsyncEvent<Item>();
+        public AsyncEvent<Item> OnEquipped { get; }
         
-        public AsyncEvent<Item> OnUnEquipped { get; } = new AsyncEvent<Item>();
+        public AsyncEvent<Item> OnUnEquipped { get; }
 
         protected InventoryComponent()
         {
+            OnEquipped = new AsyncEvent<Item>();
+            
             Items = new Dictionary<EquipLocation, EquippedItem>();
             
-            Listen(OnDestroyed, () =>
-            {
-                OnEquipped.Clear();
-                OnUnEquipped.Clear();
-            });
+            OnUnEquipped = new AsyncEvent<Item>();
             
-            Listen(OnStart, () =>
+            Listen(OnStart, async () =>
             {
                 if (GameObject is Player) return;
                 
-                using var cdClient = new CdClientContext();
-                
-                var component = cdClient.ComponentsRegistryTable.FirstOrDefault(c =>
-                    c.Id == GameObject.Lot && c.Componenttype == (int) ComponentId.InventoryComponent);
+                await using var ctx = new CdClientContext();
 
-                var items = cdClient.InventoryComponentTable.Where(i => i.Id == component.Componentid).ToArray();
+                var component = await ctx.ComponentsRegistryTable.FirstOrDefaultAsync(
+                    c => c.Id == GameObject.Lot && c.Componenttype == (int) ComponentId.InventoryComponent
+                );
+
+                var items = await ctx.InventoryComponentTable.Where(
+                    i => i.Id == component.Componentid
+                ).ToArrayAsync();
 
                 foreach (var item in items)
                 {
@@ -47,9 +48,9 @@ namespace Uchu.World
                     
                     var lot = (Lot) item.Itemid;
 
-                    var componentId = lot.GetComponentId(ComponentId.ItemComponent);
+                    var componentId = await lot.GetComponentIdAsync(ComponentId.ItemComponent);
 
-                    var info = cdClient.ItemComponentTable.First(i => i.Id == componentId);
+                    var info = await ctx.ItemComponentTable.FirstAsync(i => i.Id == componentId);
                     
                     var location = (EquipLocation) info.EquipLocation;
                     
@@ -60,6 +61,15 @@ namespace Uchu.World
                     };
                 }
             });
+            
+            Listen(OnDestroyed, () =>
+            {
+                OnEquipped.Clear();
+                OnUnEquipped.Clear();
+                
+                return Task.CompletedTask;
+            });
+
         }
 
         private async Task UpdateSlotAsync(EquipLocation slot, EquippedItem item)
@@ -85,7 +95,7 @@ namespace Uchu.World
         {
             await using var cdClient = new CdClientContext();
 
-            var componentId = item.Lot.GetComponentId(ComponentId.ItemComponent);
+            var componentId = await item.Lot.GetComponentIdAsync(ComponentId.ItemComponent);
 
             var info = await cdClient.ItemComponentTable.FirstAsync(i => i.Id == componentId);
             
@@ -110,7 +120,7 @@ namespace Uchu.World
 
                 var lot = (Lot) instance.Lot;
                 
-                componentId = lot.GetComponentId(ComponentId.ItemComponent);
+                componentId = await lot.GetComponentIdAsync(ComponentId.ItemComponent);
 
                 info = await cdClient.ItemComponentTable.FirstAsync(i => i.Id == componentId);
             
@@ -177,7 +187,7 @@ namespace Uchu.World
 
             if (!ignoreAllChecks)
             {
-                if (!As<Player>().GetComponent<ModularBuilderComponent>().IsBuilding)
+                if (!GameObject.GetComponent<ModularBuilderComponent>().IsBuilding)
                 {
                     if (itemType == ItemType.Model || itemType == ItemType.LootModel || itemType == ItemType.Vehicle || item.Lot == 6086)
                     {
@@ -213,8 +223,10 @@ namespace Uchu.World
         {
             await using var ctx = new CdClientContext();
 
+            var componentId = await item.GetComponentIdAsync(ComponentId.ItemComponent);
+            
             var itemInfo = await ctx.ItemComponentTable.FirstOrDefaultAsync(
-                i => i.Id == item.GetComponentId(ComponentId.ItemComponent)
+                i => i.Id == componentId
             );
 
             if (itemInfo == default) return new Lot[0];

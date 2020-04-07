@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Threading.Tasks;
 using RakDotNet.IO;
 
 namespace Uchu.World
@@ -19,6 +20,8 @@ namespace Uchu.World
                 {
                     BouncerDestination = (Vector3) value;
                 }
+                
+                return Task.CompletedTask;
             });
         }
 

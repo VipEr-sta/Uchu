@@ -122,6 +122,8 @@ namespace Uchu.World
         [XmlAttribute("rh")] public long Rh { get; set; }
 
         [XmlAttribute("t")] public long ShirtColor { get; set; }
+        
+        [XmlAttribute("lcdp")] public string RocketInfo { get; set; }
     }
 
     public class CharacterNode

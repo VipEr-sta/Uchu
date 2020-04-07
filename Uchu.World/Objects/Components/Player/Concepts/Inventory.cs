@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Uchu.Core;
 
@@ -63,31 +64,40 @@ namespace Uchu.World
         {
             InventoryType = inventoryType;
             ManagerComponent = managerComponent;
+            
+            _items = new List<Item>();
+        }
 
-            using var ctx = new UchuContext();
-            var playerCharacter = ctx.Characters
-                .Include(c => c.Items)
-                .First(c => c.Id == managerComponent.GameObject.Id);
+        public async Task CollectItemsAsync()
+        {
+            await using var ctx = new UchuContext();
 
-            var inventoryItems = playerCharacter.Items
-                .Where(item => item.ParentId == ObjectId.Invalid && (InventoryType) item.InventoryType == inventoryType)
-                .ToList();
+            var playerCharacter = await ctx.Characters.Include(c => c.Items).FirstAsync(
+                c => c.Id == ManagerComponent.GameObject.Id
+            );
 
-            _items = inventoryItems.Select(
-                i => Item.Instantiate(i.Id, this)
-            ).Where(item => !ReferenceEquals(item, default)).ToList();
+            var inventoryItems = playerCharacter.Items.Where(
+                item => item.ParentId == ObjectId.Invalid && (InventoryType) item.InventoryType == InventoryType
+            ).ToList();
 
-            Size = inventoryType != InventoryType.Items ? 1000 : playerCharacter.InventorySize;
+            foreach (var item in inventoryItems)
+            {
+                if (item == default) continue;
+                
+                var instance = await Item.InstantiateAsync(item.Id, this);
+
+                _items.Add(instance);
+            }
+            
+            Size = InventoryType != InventoryType.Items ? 1000 : playerCharacter.InventorySize;
             
             foreach (var item in _items)
             {
-                Object.Start(item);
+                await Object.StartAsync(item);
             }
         }
 
         public IEnumerable<Item> Items => Array.AsReadOnly(_items.ToArray());
-
-        public Item this[uint slot] => Items.FirstOrDefault(i => i.Slot == slot);
 
         public Item this[long id] => Items.FirstOrDefault(i => i.Id == id);
 

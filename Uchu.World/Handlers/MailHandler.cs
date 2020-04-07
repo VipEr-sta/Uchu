@@ -71,7 +71,9 @@ namespace Uchu.World.Handlers
                 goto sendResponse;
             }
 
-            if (player.Currency < (long) packet.Currency)
+            var currency = await player.GetCurrencyAsync();
+            
+            if (currency < (long) packet.Currency)
             {
                 response.Code = MailResponseCode.NotEnoughCurrency;
 
@@ -118,7 +120,7 @@ namespace Uchu.World.Handlers
 
             await ctx.Mails.AddAsync(mail);
 
-            player.Currency -= 25; // Hard coded cost for filing a mail
+            await player.SetCurrencyAsync(currency - 25);
 
             response.Code = MailResponseCode.Success;
 
@@ -187,7 +189,9 @@ namespace Uchu.World.Handlers
             mail.AttachmentLot = -1;
             mail.AttachmentCount = 0;
 
-            player.Currency += (long) mail.AttachmentCurrency;
+            var currency = await player.GetCurrencyAsync();
+
+            await player.SetCurrencyAsync(currency + (long) mail.AttachmentCurrency);
 
             response.Code = MailAttachmentCollectCode.Success;
             

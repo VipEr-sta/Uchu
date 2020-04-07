@@ -10,7 +10,7 @@ namespace Uchu.World
     [ServerComponent(Id = ComponentId.SpawnerComponent)]
     public class SpawnerComponent : Component
     {
-        private Random _random;
+        private Random Random { get; }
         
         public List<GameObject> ActiveSpawns { get; }
 
@@ -30,7 +30,7 @@ namespace Uchu.World
 
         protected SpawnerComponent()
         {
-            _random = new Random();
+            Random = new Random();
             
             SpawnLocations = new List<SpawnLocation>();
 
@@ -48,10 +48,12 @@ namespace Uchu.World
                 }
 
                 GameObject.Layer = StandardLayer.Spawner;
+                
+                return Task.CompletedTask;
             });
         }
 
-        private GameObject GenerateSpawnObject()
+        private async Task<GameObject> GenerateSpawnObjectAsync()
         {
             var location = FindLocation();
 
@@ -67,13 +69,15 @@ namespace Uchu.World
                 ObjectId = ObjectId.FromFlags(ObjectIdFlags.Spawned | ObjectIdFlags.Client)
             };
             
-            var obj = GameObject.Instantiate(o, Zone, this);
+            var obj = await GameObject.InstantiateAsync(o, Zone, this);
 
             if (obj.TryGetComponent<DestructibleComponent>(out var destructibleComponent))
             {
-                Listen(destructibleComponent.OnSmashed, (smasher, lootOwner) =>
+                Listen(destructibleComponent.OnSmashed, (smasher, owner) =>
                 {
                     location.InUse = false;
+                    
+                    return Task.CompletedTask;
                 });
             }
 
@@ -93,16 +97,16 @@ namespace Uchu.World
                 };
             }
             
-            var location = locations[_random.Next(locations.Length)];
+            var location = locations[Random.Next(locations.Length)];
 
             return location;
         }
 
-        public GameObject Spawn()
+        public async Task<GameObject> SpawnAsync()
         {
-            var obj = GenerateSpawnObject();
+            var obj = await GenerateSpawnObjectAsync();
 
-            Start(obj);
+            await StartAsync(obj);
 
             GameObject.Construct(obj);
 
@@ -111,6 +115,8 @@ namespace Uchu.World
             Listen(obj.OnDestroyed, () =>
             {
                 ActiveSpawns.Remove(obj);
+                
+                return Task.CompletedTask;
             });
 
             if (obj.TryGetComponent<DestructibleComponent>(out var destructibleComponent))
@@ -129,11 +135,11 @@ namespace Uchu.World
             return obj;
         }
 
-        public void SpawnCluster()
+        public async Task SpawnClusterAsync()
         {
             for (var i = 0; i < SpawnsToMaintain; i++)
             {
-                Spawn();
+                await SpawnAsync();
             }
         }
     }

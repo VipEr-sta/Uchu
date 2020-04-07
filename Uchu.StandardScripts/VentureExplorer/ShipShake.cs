@@ -44,9 +44,9 @@ namespace Uchu.StandardScripts.VentureExplorer
             return RandomTime + time;
         }
         
-        public override Task LoadAsync()
+        public override async Task LoadAsync()
         {
-            Self = GameObject.Instantiate(Zone, 33, new Vector3
+            Self = await GameObject.InstantiateAsync(Zone, 33, new Vector3
             {
                 /*
                  * Arbitrary position
@@ -56,7 +56,7 @@ namespace Uchu.StandardScripts.VentureExplorer
                 Z = -30
             });
 
-            Start(Self);
+            await StartAsync(Self);
 
             Construct(Self);
             
@@ -66,14 +66,12 @@ namespace Uchu.StandardScripts.VentureExplorer
             ShipFxObject = GetGroup("ShipFX")[0];
             ShipFxObject2 = GetGroup("ShipFX2")[0];
             
-            Task.Run(async () =>
+            var _ = Task.Run(async () =>
             {
                 await Task.Delay(RepeatTime);
 
                 DoShake(false);
             });
-            
-            return Task.CompletedTask;
         }
 
         private void DoShake(bool explodeIdle)
@@ -115,13 +113,11 @@ namespace Uchu.StandardScripts.VentureExplorer
             }
         }
 
-        public override Task UnloadAsync()
+        public override async Task UnloadAsync()
         {
             _running = false;
 
-            Destroy(Self);
-            
-            return Task.CompletedTask;
+            await DestroyAsync(Self);
         }
     }
 }

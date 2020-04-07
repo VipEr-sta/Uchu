@@ -20,7 +20,7 @@ namespace Uchu.World
 
     public class WorldServer : Server
     {
-        private readonly GameMessageHandlerMap _gameMessageHandlerMap;
+        private GameMessageHandlerMap GameMessageHandlerMap { get; }
 
         public List<Zone> Zones { get; }
 
@@ -36,15 +36,25 @@ namespace Uchu.World
 
             MaxPlayerCount = 20; // TODO: Set
             
-            _gameMessageHandlerMap = new GameMessageHandlerMap();
+            GameMessageHandlerMap = new GameMessageHandlerMap();
         }
 
-        public override async Task ConfigureAsync(string configFile)
+        private async Task HandleDisconnect(IPEndPoint point, CloseReason reason)
         {
-            Logger.Information($"Created WorldServer on PID {Process.GetCurrentProcess().Id.ToString()}");
+            Logger.Information($"{point} disconnected: {reason}");
 
-            await base.ConfigureAsync(configFile);
+            var players = Zones.Select(zone =>
+                zone.Players.FirstOrDefault(p => p.Connection.EndPoint.Equals(point))
+            ).Where(player => player != default);
+            
+            foreach (var player in players)
+            {
+                await Object.DestroyAsync(player);
+            }
+        }
 
+        protected override async Task<Task[]> StartAdditionalTasksAsync()
+        {
             ZoneParser = new ZoneParser(Resources, Configuration.ResourceConfiguration);
             
             Whitelist = new Whitelist(Resources);
@@ -52,11 +62,11 @@ namespace Uchu.World
             await Whitelist.LoadDefaultWhitelist();
             
             GameMessageReceived += HandleGameMessageAsync;
-            ServerStopped += () =>
+            ServerStopped += async () =>
             {
                 foreach (var zone in Zones)
                 {
-                    Object.Destroy(zone);
+                    await Object.DestroyAsync(zone);
                 }
             };
 
@@ -67,26 +77,7 @@ namespace Uchu.World
             ManagedScriptEngine.AdditionalPaths = Configuration.PythonConfiguration.Paths.ToArray();
             
             Logger.Information($"Setting up world server: {Id}");
-        }
-
-        private Task HandleDisconnect(IPEndPoint point, CloseReason reason)
-        {
-            Logger.Information($"{point} disconnected: {reason}");
-
-            var players = Zones.Select(zone =>
-                zone.Players.FirstOrDefault(p => p.Connection.EndPoint.Equals(point))
-            ).Where(player => player != default);
             
-            foreach (var player in players)
-            {
-                Object.Destroy(player);
-            }
-
-            return Task.CompletedTask;
-        }
-
-        protected override async Task<Task[]> StartAdditionalTasksAsync()
-        {
             Logger.Debug($"Port: {Port}");
             
             var instance = await Api.RunCommandAsync<InstanceInfoResponse>(
@@ -184,7 +175,7 @@ namespace Uchu.World
                         {
                             var gameMessage = (IGameMessage) packet;
 
-                            _gameMessageHandlerMap.Add(gameMessage.GameMessageId, new Handler
+                            GameMessageHandlerMap.Add(gameMessage.GameMessageId, new Handler
                             {
                                 Group = instance,
                                 Info = method,
@@ -237,7 +228,7 @@ namespace Uchu.World
 
         private async Task HandleGameMessageAsync(long objectId, ushort messageId, BitReader reader, IRakConnection connection)
         {
-            if (!_gameMessageHandlerMap.TryGetValue((GameMessageId) messageId, out var messageHandler))
+            if (!GameMessageHandlerMap.TryGetValue((GameMessageId) messageId, out var messageHandler))
             {
                 Logger.Warning(Enum.IsDefined(typeof(GameMessageId), messageId)
                     ? $"No handler registered for GameMessage: {(GameMessageId) messageId}!"

@@ -85,11 +85,11 @@ namespace Uchu.World
 
         public Vector3 Origin { get; private set; }
         
-        private Event OnEndOfPath { get; }
+        private AsyncEvent OnEndOfPath { get; }
         
-        private Event OnEndOfWayPoint { get; }
+        private AsyncEvent OnEndOfWayPoint { get; }
         
-        private Event Regular { get; }
+        private AsyncEvent Regular { get; }
         
         private float DeltaTime { get; set; }
         
@@ -97,11 +97,11 @@ namespace Uchu.World
         {
             Random = new Random();
             
-            OnEndOfPath = new Event();
+            OnEndOfPath = new AsyncEvent();
             
-            OnEndOfWayPoint = new Event();
+            OnEndOfWayPoint = new AsyncEvent();
             
-            Regular = new Event();
+            Regular = new AsyncEvent();
             
             Listen(OnStart, async () =>
             {
@@ -114,13 +114,15 @@ namespace Uchu.World
                 
                 await using var ctx = new CdClientContext();
 
+                var componentId = await GameObject.Lot.GetComponentIdAsync(ComponentId.MovementAIComponent);
+
                 var info = await ctx.MovementAIComponentTable.FirstOrDefaultAsync(
-                    m => m.Id == GameObject.Lot.GetComponentId(ComponentId.MovementAIComponent)
+                    m => m.Id == componentId
                 );
 
                 if (info == default)
                 {
-                    Destroy(this);
+                    await DestroyAsync(this);
                     
                     return;
                 }
@@ -139,7 +141,7 @@ namespace Uchu.World
 
                 Listen(destructible.OnSmashed, (smasher, lootOwner) =>
                 {
-                    if (!GameObject.Alive) return;
+                    if (!GameObject.Alive) return Task.CompletedTask;
                     
                     Transform.Position = Origin;
 
@@ -148,22 +150,22 @@ namespace Uchu.World
                     ControllablePhysicsComponent.Velocity = Vector3.Zero;
 
                     ControllablePhysicsComponent.HasVelocity = true;
-                });
-
-                SetOnTick(CalculateAction);
-
-                Zone.Update(GameObject, () =>
-                {
-                    Regular.Invoke();
-
-                    CalculateMovement();
                     
                     return Task.CompletedTask;
+                });
+
+                SetOnTick(CalculateActionAsync);
+
+                Zone.Update(GameObject, async () =>
+                {
+                    await Regular.InvokeAsync();
+
+                    await CalculateMovementAsync();
                 }, UpdateRate);
             });
         }
 
-        private void CalculateMovement()
+        private async Task CalculateMovementAsync()
         {
             if (!Zone.NavMeshManager.Enabled) return;
             
@@ -182,13 +184,11 @@ namespace Uchu.World
             {
                 PathIndex++;
                 
-                if (OnEndOfWayPoint.Any)
-                    OnEndOfWayPoint.Invoke();
+                await OnEndOfWayPoint.InvokeAsync();
                 
                 if (PathIndex >= Path.Length)
                 {
-                    if (OnEndOfPath.Any)
-                        OnEndOfPath.Invoke();
+                    await OnEndOfPath.InvokeAsync();
                 }
 
                 if (HasWayPoint)
@@ -221,11 +221,11 @@ namespace Uchu.World
             GameObject.Serialize(GameObject);
         }
 
-        private void CalculateAction()
+        private async Task CalculateActionAsync()
         {
             if (CannotPerformAction)
             {
-                SetOnTick(CalculateAction);
+                SetOnTick(CalculateActionAsync);
             }
             
             var target = SearchForTarget();
@@ -294,7 +294,7 @@ namespace Uchu.World
 
             var __ = Task.Run(CalculateWanderDelay);
 
-            SetOnTick(CalculateAction);
+            SetOnTick(CalculateActionAsync);
         }
 
         private async Task CalculateWanderDelay()
@@ -350,7 +350,7 @@ namespace Uchu.World
 
             CalculatePath(gameObject.Transform.Position);
 
-            SetOnEndOfPath(CalculateAction);
+            SetOnEndOfPath(CalculateActionAsync);
         }
 
         private void Tether(GameObject gameObject)
@@ -363,7 +363,7 @@ namespace Uchu.World
 
             CalculatePath(gameObject.Transform.Position);
             
-            SetOnEndOfWayPoint(CalculateAction);
+            SetOnEndOfWayPoint(CalculateActionAsync);
         }
 
         private void Retreat()
@@ -376,7 +376,7 @@ namespace Uchu.World
 
             CalculatePath(Origin);
 
-            SetOnEndOfPath(CalculateAction);
+            SetOnEndOfPath(CalculateActionAsync);
         }
 
         private void CalculatePath(Vector3 target)
@@ -394,7 +394,7 @@ namespace Uchu.World
             Logger.Debug($"Finished calculated path to: {target} in {watch.ElapsedMilliseconds}ms!");
         }
 
-        private void SetOnEndOfPath(Action action)
+        private void SetOnEndOfPath(Func<Task> action)
         {
             OnEndOfPath.Clear();
             OnEndOfWayPoint.Clear();
@@ -403,7 +403,7 @@ namespace Uchu.World
             Listen(OnEndOfPath, action);
         }
 
-        private void SetOnEndOfWayPoint(Action action)
+        private void SetOnEndOfWayPoint(Func<Task> action)
         {
             OnEndOfPath.Clear();
             OnEndOfWayPoint.Clear();
@@ -412,7 +412,7 @@ namespace Uchu.World
             Listen(OnEndOfWayPoint, action);
         }
 
-        private void SetOnTick(Action action)
+        private void SetOnTick(Func<Task> action)
         {
             OnEndOfPath.Clear();
             OnEndOfWayPoint.Clear();

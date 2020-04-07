@@ -8,46 +8,49 @@ namespace Uchu.World
 {
     public class Perspective
     {
-        private readonly Stack<ushort> _droppedIds;
+        private Stack<ushort> DroppedIds { get; }
 
-        private readonly Dictionary<GameObject, ushort> _networkDictionary;
-        private readonly Player _player;
-
-        public GameObject[] LoadedObjects => _networkDictionary.Keys.ToArray();
-
-        public MaskFilter MaskFilter => TryGetFilter<MaskFilter>(out var filter) ? filter : default;
+        private Dictionary<GameObject, ushort> NetworkDictionary { get; }
         
-        public Event OnLoaded { get; } = new Event();
+        private Player Player { get; }
 
-        private List<IPerspectiveFilter> Filters { get; } = new List<IPerspectiveFilter>();
+        public GameObject[] LoadedObjects => NetworkDictionary.Keys.ToArray();
+
+        public AsyncEvent OnLoaded { get; }
+
+        private List<IPerspectiveFilter> Filters { get; }
 
         public Perspective(Player player)
         {
-            _networkDictionary = new Dictionary<GameObject, ushort>();
+            OnLoaded = new AsyncEvent();
 
-            _droppedIds = new Stack<ushort>();
+            NetworkDictionary = new Dictionary<GameObject, ushort>();
 
-            _player = player;
+            DroppedIds = new Stack<ushort>();
+            
+            Filters =  new List<IPerspectiveFilter>();
+
+            Player = player;
         }
 
         internal bool Reveal(GameObject gameObject, out ushort networkId)
         {
-            lock (_networkDictionary)
+            lock (NetworkDictionary)
             {
-                if (!gameObject.Alive || _networkDictionary.ContainsKey(gameObject))
+                if (!gameObject.Alive || NetworkDictionary.ContainsKey(gameObject))
                 {
                     networkId = 0;
-                    
+
                     return false;
-                };
-                
-                if (!_droppedIds.TryPop(out networkId))
+                }
+
+                if (!DroppedIds.TryPop(out networkId))
                 {
-                    if (_networkDictionary.Any()) networkId = (ushort) (_networkDictionary.Values.Max() + 1);
+                    if (NetworkDictionary.Any()) networkId = (ushort) (NetworkDictionary.Values.Max() + 1);
                     else networkId = 1;
                 }
 
-                _networkDictionary[gameObject] = networkId;
+                NetworkDictionary[gameObject] = networkId;
 
                 return true;
             }
@@ -55,11 +58,11 @@ namespace Uchu.World
 
         internal void Drop(GameObject gameObject)
         {
-            lock (_networkDictionary)
+            lock (NetworkDictionary)
             {
-                if (!_networkDictionary.TryGetValue(gameObject, out var id)) return;
-                _droppedIds.Push(id);
-                _networkDictionary.Remove(gameObject);
+                if (!NetworkDictionary.TryGetValue(gameObject, out var id)) return;
+                DroppedIds.Push(id);
+                NetworkDictionary.Remove(gameObject);
             }
         }
 
@@ -70,9 +73,9 @@ namespace Uchu.World
 
         internal bool TryGetNetworkId(GameObject gameObject, out ushort id)
         {
-            lock (_networkDictionary)
+            lock (NetworkDictionary)
             {
-                return _networkDictionary.TryGetValue(gameObject, out id);
+                return NetworkDictionary.TryGetValue(gameObject, out id);
             }
         }
 
@@ -95,11 +98,12 @@ namespace Uchu.World
 
         public T AddFilter<T>() where T : IPerspectiveFilter, new()
         {
-            if (TryGetFilter<T>(out _)) throw new ArgumentException($"Can only have one {nameof(IPerspectiveFilter)} of {typeof(T)}");
+            if (TryGetFilter<T>(out _))
+                throw new ArgumentException($"Can only have one {nameof(IPerspectiveFilter)} of {typeof(T)}");
 
             var instance = new T();
-            
-            instance.Initialize(_player);
+
+            instance.Initialize(Player);
 
             Filters.Add(instance);
 
@@ -111,7 +115,7 @@ namespace Uchu.World
             if (TryGetFilter<T>(out _))
             {
                 value = default;
-                
+
                 return false;
             }
 

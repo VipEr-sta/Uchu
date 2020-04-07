@@ -28,11 +28,11 @@ namespace Uchu.World.Scripting.Managed
             Zone = zone;
         }
 
-        public override Task LoadAsync()
+        public override async Task LoadAsync()
         {
             Proxy = Object.Instantiate(Zone);
 
-            Object.Start(Proxy);
+            await Object.StartAsync(Proxy);
             
             Script = new ManagedScript(
                 Source,
@@ -54,13 +54,13 @@ namespace Uchu.World.Scripting.Managed
             var variables = new Dictionary<string, dynamic>
             {
                 ["Zone"] = Zone,
-                ["Start"] = new Action<Object>(Object.Start),
-                ["Destroy"] = new Action<Object>(Object.Destroy),
+                ["Start"] = new Func<Object, Task>(Object.StartAsync),
+                ["Destroy"] = new Func<Object, Task>(Object.DestroyAsync),
                 ["Construct"] = new Action<GameObject>(GameObject.Construct),
                 ["Serialize"] = new Action<GameObject>(GameObject.Serialize),
                 ["Destruct"] = new Action<GameObject>(GameObject.Destruct),
-                ["Create"] = new Func<int, Vector3, Quaternion, GameObject>
-                    ((lot, position, rotation) => GameObject.Instantiate(Zone, lot, position, rotation)),
+                ["Create"] = new Func<int, Vector3, Quaternion, Task<GameObject>>
+                    ((lot, position, rotation) => GameObject.InstantiateAsync(Zone, lot, position, rotation)),
                 ["Broadcast"] = new Action<dynamic>(obj =>
                 {
                     foreach (var player in Zone.Players)
@@ -68,9 +68,9 @@ namespace Uchu.World.Scripting.Managed
                         player.SendChatMessage(obj, PlayerChatChannel.Normal);
                     }
                 }),
-                ["OnStart"] = new Func<GameObject, Action, Delegate>((gameObject, action) => Listen(gameObject.OnStart, action)),
-                ["OnDestroy"] = new Func<GameObject, Action, Delegate>((gameObject, action) => Listen(gameObject.OnDestroyed, action)),
-                ["OnInteract"] = new Func<GameObject, Action<Player>, Delegate>((gameObject, action) => Listen(gameObject.OnInteract, action)),
+                ["OnStart"] = new Func<GameObject, Func<Task>, Delegate>((gameObject, action) => Listen(gameObject.OnStart, action)),
+                ["OnDestroy"] = new Func<GameObject, Func<Task>, Delegate>((gameObject, action) => Listen(gameObject.OnDestroyed, action)),
+                ["OnInteract"] = new Func<GameObject, Func<Player, Task>, Delegate>((gameObject, action) => Listen(gameObject.OnInteract, action)),
                 ["OnHealth"] = new Func<GameObject, Action<int, int, GameObject>, Delegate>((gameObject, action) =>
                 {
                     if (!gameObject.TryGetComponent<Stats>(out var stats)) return null;
@@ -97,7 +97,12 @@ namespace Uchu.World.Scripting.Managed
                 {
                     if (!gameObject.TryGetComponent<Stats>(out var stats)) return null;
                     
-                    return Listen(stats.OnDeath, () => { action(stats.LatestDamageSource); });
+                    return Listen(stats.OnDeath, () =>
+                    {
+                        action(stats.LatestDamageSource); 
+                        
+                        return Task.CompletedTask;
+                    });
                 }),
                 ["OnChat"] = new Func<Action<Player, string>, Delegate>(action =>
                 {
@@ -109,15 +114,15 @@ namespace Uchu.World.Scripting.Managed
                     });
                 }),
                 ["Release"] = new Action<Delegate>(ReleaseListener),
-                ["Drop"] = new Action<int, Vector3, GameObject, Player>((lot, position, source, player) =>
+                ["Drop"] = new Func<int, Vector3, GameObject, Player, Task>(async (lot, position, source, player) =>
                 {
-                    var loot = InstancingUtil.Loot(lot, player, source, position);
+                    var loot = await InstancingUtilities.InstantiateLootAsync(lot, player, source, position);
 
-                    Object.Start(loot);
+                    await Object.StartAsync(loot);
                 }),
                 ["Currency"] = new Action<int, Vector3, GameObject, Player>((count, position, source, player) =>
                 {
-                    InstancingUtil.Currency(count, player, source, position);
+                    InstancingUtilities.InstantiateCurrency(count, player, source, position);
                 }),
                 ["GetComponent"] = new Func<GameObject, string, Component>((gameObject, name) =>
                 {
@@ -125,19 +130,24 @@ namespace Uchu.World.Scripting.Managed
                     
                     return type != default ? gameObject.GetComponent(type) : null;
                 }),
-                ["AddComponent"] = new Func<GameObject, string, Component>((gameObject, name) =>
+                ["AddComponent"] = new Func<GameObject, string, Task<Component>>(async (gameObject, name) =>
                 {
                     var type = Type.GetType($"Uchu.World.{name}");
+
+                    if (type == default) return default;
                     
-                    return type != default ? gameObject.AddComponent(type) : null;
+                    var result = await gameObject.AddComponentAsync(type);
+
+                    return result;
+
                 }),
-                ["RemoveComponent"] = new Action<GameObject, string>((gameObject, name) =>
+                ["RemoveComponent"] = new Func<GameObject, string, Task>(async (gameObject, name) =>
                 {
                     var type = Type.GetType($"Uchu.World.{name}");
 
                     if (type == null) return;
                     
-                    gameObject.RemoveComponent(type);
+                    await gameObject.RemoveComponentAsync(type);
                 }),
                 ["Vector3"] = new Func<float, float, float, Vector3>((x, y, z) => new Vector3(x, y, z)),
                 ["Distance"] = new Func<Vector3, Vector3, float>(Vector3.Distance),
@@ -155,12 +165,14 @@ namespace Uchu.World.Scripting.Managed
 
             Script.Run(variables.ToArray());
 
-            Task.Run(() =>
+            var _ = TaskHelper.TryTask(() =>
             {
                 Script.Execute("load", out var exception);
 
                 if (exception != default)
                     Logger.Error(exception);
+                
+                return Task.CompletedTask;
             });
             
             Zone.Update(Proxy, () => { Task.Run(() => {
@@ -172,25 +184,23 @@ namespace Uchu.World.Scripting.Managed
             
                 return Task.CompletedTask;
             }, 1);
-            
-            return Task.CompletedTask;
         }
 
-        public override Task UnloadAsync()
+        public override async Task UnloadAsync()
         {
-            Object.Destroy(Proxy);
+            await Object.DestroyAsync(Proxy);
             
             ClearListeners();
 
-            Task.Run(() =>
+            var _ = TaskHelper.TryTask(() =>
             {
                 Script.Execute("unload", out var exception);
 
                 if (exception != default)
                     Logger.Error(exception);
+                
+                return Task.CompletedTask;
             });
-            
-            return Task.CompletedTask;
         }
     }
 }

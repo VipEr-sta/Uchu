@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using RakDotNet.IO;
 using Uchu.Core;
 
@@ -20,6 +21,8 @@ namespace Uchu.World
             {
                 if (GameObject.Settings.TryGetValue("renderDisabled", out var disabled)) Disabled = (bool) disabled;
                 else Disabled = false;
+                
+                return Task.CompletedTask;
             });
         }
 
