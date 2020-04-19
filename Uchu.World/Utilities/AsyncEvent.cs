@@ -10,7 +10,10 @@ namespace Uchu.World
         {
             foreach (var action in Actions.ToArray())
             {
-                await action.Invoke();
+                await TaskHelper.TryTask(async () =>
+                {
+                    await action.Invoke();
+                });
             }
         }
     }
@@ -21,7 +24,10 @@ namespace Uchu.World
         {
             foreach (var action in Actions.ToArray())
             {
-                await action.Invoke(value);
+                await TaskHelper.TryTask(async () =>
+                {
+                    await action.Invoke(value);
+                });
             }
         }
     }
@@ -32,7 +38,10 @@ namespace Uchu.World
         {
             foreach (var action in Actions.ToArray())
             {
-                await action.Invoke(value, value2);
+                await TaskHelper.TryTask(async () =>
+                {
+                    await action.Invoke(value, value2);
+                });
             }
         }
     }
@@ -43,7 +52,10 @@ namespace Uchu.World
         {
             foreach (var action in Actions.ToArray())
             {
-                await action.Invoke(value, value2, value3);
+                await TaskHelper.TryTask(async () =>
+                {
+                    await action.Invoke(value, value2, value3);
+                });
             }
         }
     }
@@ -54,7 +66,10 @@ namespace Uchu.World
         {
             foreach (var action in Actions.ToArray())
             {
-                await action.Invoke(value, value2, value3, value4);
+                await TaskHelper.TryTask(async () =>
+                {
+                    await action.Invoke(value, value2, value3, value4);
+                });
             }
         }
     }

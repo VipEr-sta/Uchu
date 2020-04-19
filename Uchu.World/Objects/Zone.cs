@@ -547,7 +547,7 @@ namespace Uchu.World
             timer.Start();
             
             Logger.Information("Running gameloop");
-
+            
             return Task.Run(async () =>
             {
                 Running = true;

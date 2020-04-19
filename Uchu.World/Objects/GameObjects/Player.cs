@@ -283,6 +283,9 @@ namespace Uchu.World
             Logger.Information($"Starting player");
             
             await StartAsync(instance);
+            
+            Logger.Information($"Construing player");
+            
             Construct(instance);
 
             //

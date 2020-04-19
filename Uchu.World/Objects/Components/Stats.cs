@@ -443,9 +443,9 @@ namespace Uchu.World
 
         private void WriteStats(BitWriter writer)
         {
-            HasStats = true;
+            writer.WriteBit(HasStats);
             
-            if (!writer.Flag(HasStats)) return;
+            if (!HasStats) return;
 
             writer.Write(Health);
             writer.Write<float>(MaxHealth);

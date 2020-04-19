@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using InfectedRose.Lvl;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +21,8 @@ namespace Uchu.World
         private Mask _layer = new Mask(StandardLayer.Default);
 
         private ObjectWorldState _worldState;
+        
+        private SemaphoreSlim ComponentLock { get; }
 
         protected string ObjectName { get; set; }
         
@@ -37,6 +41,7 @@ namespace Uchu.World
 
         protected GameObject()
         {
+            ComponentLock = new SemaphoreSlim(1, 1);
             Components = new List<Component>();
             Settings = new LegoDataDictionary();
 
@@ -45,7 +50,13 @@ namespace Uchu.World
 
             Listen(OnStart, async () =>
             {
-                foreach (var component in Components)
+                await ComponentLock.WaitAsync();
+
+                var components = Components.ToArray();
+                
+                ComponentLock.Release();
+                
+                foreach (var component in components)
                 {
                     await StartAsync(component);
                 }
@@ -59,7 +70,13 @@ namespace Uchu.World
                 
                 await Zone.UnregisterObjectAsync(this);
 
-                foreach (var component in Components)
+                await ComponentLock.WaitAsync();
+
+                var components = Components.ToArray();
+                
+                ComponentLock.Release();
+
+                foreach (var component in components)
                 {
                     await DestroyAsync(component);
                 }
@@ -175,7 +192,11 @@ namespace Uchu.World
             {
                 component.GameObject = this;
 
+                await ComponentLock.WaitAsync();
+                
                 Components.Add(component);
+
+                ComponentLock.Release();
 
                 var requiredComponents = type.GetCustomAttributes<RequireComponentAttribute>().ToArray();
 
@@ -208,27 +229,35 @@ namespace Uchu.World
 
         public Component GetComponent(Type type)
         {
-            return Components.FirstOrDefault(c => c.GetType() == type);
-        }
+            ComponentLock.Wait();
+            
+            var result = Components.FirstOrDefault(c => c.GetType() == type);
 
-        public Component[] GetComponents(Type type)
-        {
-            return Components.Where(c => c.GetType() == type).ToArray();
+            ComponentLock.Release();
+
+            return result;
         }
 
         public T GetComponent<T>() where T : Component
         {
-            return Components.FirstOrDefault(c => c is T) as T;
-        }
+            ComponentLock.Wait();
 
-        public T[] GetComponents<T>() where T : Component
-        {
-            return Components.OfType<T>().ToArray();
+            var result = Components.FirstOrDefault(c => c is T) as T;
+            
+            ComponentLock.Release();
+
+            return result;
         }
 
         public Component[] GetAllComponents()
         {
-            return Components.ToArray();
+            ComponentLock.Wait();
+
+            var result = Components.ToArray();
+            
+            ComponentLock.Release();
+
+            return result;
         }
 
         public bool TryGetComponent(Type type, out Component result)
@@ -237,29 +266,21 @@ namespace Uchu.World
             return result != default;
         }
 
-        public bool TryGetComponents(Type type, out Component[] result)
-        {
-            result = GetComponents(type);
-            return result.Length != default;
-        }
-
         public bool TryGetComponent<T>(out T result) where T : Component
         {
             result = GetComponent<T>();
             return result != default;
         }
 
-        public bool TryGetComponents<T>(out T[] result) where T : Component
-        {
-            result = GetComponents<T>();
-            return result.Length != default;
-        }
-
         public async Task RemoveComponentAsync(Type type, bool destroy = true)
         {
             var comp = GetComponent(type);
+
+            await ComponentLock.WaitAsync();
             
             Components.Remove(comp);
+
+            ComponentLock.Release();
 
             if (destroy)
             {
@@ -274,7 +295,13 @@ namespace Uchu.World
 
         public async Task RemoveComponentAsync(Component component, bool destroy = true)
         {
-            if (Components.Contains(component))
+            await ComponentLock.WaitAsync();
+
+            var contains = Components.Contains(component);
+
+            ComponentLock.Release();
+            
+            if (contains)
             {
                 await RemoveComponentAsync(component.GetType(), destroy);
             }

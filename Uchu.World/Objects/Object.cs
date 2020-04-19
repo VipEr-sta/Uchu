@@ -53,24 +53,18 @@ namespace Uchu.World
             obj.Started = true;
             
             await obj.Zone.RegisterObjectAsync(obj);
-
-            try
-            {
-                await obj.OnStart.InvokeAsync();
-            }
-            catch (Exception e)
-            {
-                Logger.Error(e);
-            }
+            
+            await obj.OnStart.InvokeAsync();
         }
 
         public static async Task DestroyAsync(Object obj)
         {
-            await obj.Zone.UnregisterObjectAsync(obj);
-            
             await obj.OnDestroyed.InvokeAsync();
             
+            await obj.Zone.UnregisterObjectAsync(obj);
+            
             obj.OnStart.Clear();
+            
             obj.OnDestroyed.Clear();
 
             obj.ClearListeners();

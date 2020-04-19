@@ -16,11 +16,6 @@ namespace Uchu.World
             {
                 CollectibleId = (ushort) (int) GameObject.Settings["collectible_id"];
 
-                foreach (var stats in GameObject.GetComponents<Stats>())
-                {
-                    stats.HasStats = false;
-                }
-                
                 return Task.CompletedTask;
             });
         }
