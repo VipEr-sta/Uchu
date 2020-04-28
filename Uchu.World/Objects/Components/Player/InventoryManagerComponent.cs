@@ -31,7 +31,7 @@ namespace Uchu.World
 
             CalculationLock = new SemaphoreSlim(1, 1);
             
-            Listen(OnStart, () =>
+            Listen(OnStart, async () =>
             {
                 foreach (var value in Enum.GetValues(typeof(InventoryType)))
                 {
@@ -39,10 +39,12 @@ namespace Uchu.World
 
                     Logger.Information($"[{id}]");
 
-                    _inventories.Add(id, new Inventory(id, this));
+                    var inventory = new Inventory(id, this);
+
+                    await inventory.CollectItemsAsync();
+                    
+                    _inventories.Add(id, inventory);
                 }
-                
-                return Task.CompletedTask;
             });
 
             Listen(OnDestroyed,  async () =>
@@ -166,6 +168,8 @@ namespace Uchu.World
             if (!_inventories.TryGetValue(inventoryType, out var inventory))
             {
                 inventory = new Inventory(inventoryType, this);
+
+                await inventory.CollectItemsAsync();
 
                 _inventories[inventoryType] = inventory;
             }

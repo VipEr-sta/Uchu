@@ -45,9 +45,7 @@ namespace Uchu.World.Behaviors
             var damage = context.Reader.Read<uint>();
             context.Writer.Write(damage);
 
-            ((Player) context.Associate)?.SendChatMessage($"{damage} -> {branchContext.Target}");
-            
-            branchContext.Target.GetComponent<Stats>().Damage(damage, context.Associate);
+            await branchContext.Target.GetComponent<Stats>().DamageAsync(damage, context.Associate);
 
             var success = context.Reader.ReadBit();
             context.Writer.WriteBit(success);
@@ -81,9 +79,6 @@ namespace Uchu.World.Behaviors
             var damage = (uint) (success ? MinDamage : 0);
 
             context.Writer.Write(damage);
-            
-            if (branchContext.Target is Player player)
-                player.SendChatMessage($"Attacked for {damage}");
 
             context.Writer.WriteBit(success);
 
@@ -91,7 +86,7 @@ namespace Uchu.World.Behaviors
             {
                 var stats = branchContext.Target.GetComponent<Stats>();
 
-                stats.Damage(damage, context.Associate);
+                await stats.DamageAsync(damage, context.Associate);
                 
                 await OnSuccess.CalculateAsync(context, branchContext);
             }

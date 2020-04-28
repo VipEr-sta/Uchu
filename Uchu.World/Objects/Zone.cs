@@ -53,7 +53,6 @@ namespace Uchu.World
             ManagedScriptEngine = new ManagedScriptEngine();
             UpdatedObjects = new List<UpdatedObject>();
             ManagedObjects = new List<Object>();
-            SpawnedObjects = new List<GameObject>();
 
             Listen(OnDestroyed, () =>
             {
@@ -87,8 +86,6 @@ namespace Uchu.World
 
         private List<Object> ManagedObjects { get; }
 
-        private List<GameObject> SpawnedObjects { get; }
-
         //
         // Macro properties
         //
@@ -98,8 +95,6 @@ namespace Uchu.World
         public GameObject[] GameObjects => Objects.OfType<GameObject>().ToArray();
         
         public Player[] Players => Objects.OfType<Player>().ToArray();
-
-        public GameObject[] Spawned => SpawnedObjects.ToArray();
 
         public ZoneId ZoneId { get; private set; }
 
@@ -334,13 +329,6 @@ namespace Uchu.World
         internal async Task RegisterPlayerAsync(Player player)
         {
             await OnPlayerLoad.InvokeAsync(player);
-
-            foreach (var gameObject in GameObjects)
-            {
-                if (gameObject.GetType().GetCustomAttribute<UnconstructedAttribute>() != null) continue;
-
-                SendConstruction(gameObject, new[] {player});
-            }
         }
 
         internal async Task RegisterObjectAsync(Object obj)
@@ -354,10 +342,6 @@ namespace Uchu.World
                 await OnObject.InvokeAsync(obj);
 
                 ManagedObjects.Add(obj);
-
-                if (!(obj is GameObject gameObject)) return;
-
-                if ((gameObject.Id.Flags & ObjectIdFlags.Spawned) != 0) SpawnedObjects.Add(gameObject);
             }
             finally
             {
@@ -374,10 +358,6 @@ namespace Uchu.World
                 if (!ManagedObjects.Contains(obj)) return;
 
                 ManagedObjects.Remove(obj);
-
-                if (obj is GameObject gameObject)
-                    if ((gameObject.Id.Flags & ObjectIdFlags.Spawned) != 0)
-                        SpawnedObjects.Remove(gameObject);
 
                 var updated = UpdatedObjects.FirstOrDefault(u => u.Associate == obj);
 
@@ -402,13 +382,15 @@ namespace Uchu.World
 
         internal static void SendConstruction(GameObject gameObject, IEnumerable<Player> recipients)
         {
+            if (!gameObject.Started) return;
+            
             foreach (var recipient in recipients)
             {
                 if (!recipient.Perspective.View(gameObject)) continue;
 
                 if (!recipient.Perspective.Reveal(gameObject, out var id)) continue;
 
-                if (id == 0) return;
+                if (id == 0) continue;
 
                 using var stream = new MemoryStream();
                 using var writer = new BitWriter(stream);
@@ -426,11 +408,17 @@ namespace Uchu.World
 
         internal static void SendSerialization(GameObject gameObject, IEnumerable<Player> recipients)
         {
+            if (!gameObject.Started) return;
+
             foreach (var recipient in recipients)
             {
+                Logger.Debug($"Check: {gameObject} to {recipient}");
+                
                 if (!recipient.Perspective.TryGetNetworkId(gameObject, out var id)) continue;
                 
-                if (id == 0) return;
+                if (id == 0) continue;
+                
+                Logger.Debug($"Serializing: {gameObject} to {recipient}");
 
                 using var stream = new MemoryStream();
                 using var writer = new BitWriter(stream);
@@ -452,6 +440,8 @@ namespace Uchu.World
 
         internal static void SendDestruction(GameObject gameObject, IEnumerable<Player> recipients)
         {
+            if (!gameObject.Started) return;
+
             foreach (var recipient in recipients)
             {
                 if (recipient.Perspective.View(gameObject)) continue;

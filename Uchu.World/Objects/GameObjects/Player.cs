@@ -241,7 +241,6 @@ namespace Uchu.World
 
             await instance.AddComponentAsync<DestructibleComponent>();
 
-            var stats = instance.GetComponent<Stats>();
             var characterComponent = await instance.AddComponentAsync<CharacterComponent>();
             var inventory = await instance.AddComponentAsync<InventoryComponent>();
 
@@ -249,9 +248,12 @@ namespace Uchu.World
             await instance.AddComponentAsync<SkillComponent>();
             await instance.AddComponentAsync<RendererComponent>();
             await instance.AddComponentAsync<PossessableOccupantComponent>();
+            await instance.AddComponentAsync<MissionInventoryComponent>();
+            await instance.AddComponentAsync<InventoryManagerComponent>();
+            await instance.AddComponentAsync<TeamPlayerComponent>();
+            await instance.AddComponentAsync<ModularBuilderComponent>();
 
             controllablePhysics.HasPosition = true;
-            stats.HasStats = true;
             characterComponent.Character = character;
 
             //
@@ -287,17 +289,6 @@ namespace Uchu.World
             Logger.Information($"Construing player");
             
             Construct(instance);
-
-            //
-            // Server Components
-            //
-
-            Logger.Information("Adding server components");
-            
-            await instance.AddComponentAsync<MissionInventoryComponent>();
-            await instance.AddComponentAsync<InventoryManagerComponent>();
-            await instance.AddComponentAsync<TeamPlayerComponent>();
-            await instance.AddComponentAsync<ModularBuilderComponent>();
 
             //
             // Register player as an active in zone
@@ -347,7 +338,7 @@ namespace Uchu.World
 
         internal void UpdateView()
         {
-            foreach (var gameObject in Zone.Spawned)
+            foreach (var gameObject in Zone.GameObjects)
             {
                 var spawned = Perspective.LoadedObjects.ToArray().Contains(gameObject);
 
@@ -363,6 +354,7 @@ namespace Uchu.World
                 if (!spawned && view)
                 {
                     Zone.SendConstruction(gameObject, this);
+                    Zone.SendSerialization(gameObject, new[] {this});
                 }
             }
         }

@@ -38,8 +38,6 @@ namespace Uchu.World
         public uint MaxImagination { get; private set; }
 
         public bool Smashable { get; set; }
-        
-        public bool HasStats { get; set; }
 
         /// <summary>
         /// New Health, Delta
@@ -91,7 +89,7 @@ namespace Uchu.World
 
             Listen(OnStart, async () =>
             {
-                if (GameObject is Player) CollectPlayerStats();
+                if (GameObject is Player) await CollectPlayerStatsAsync();
                 else await CollectObjectStatsAsync();
                 
                 await using var cdClient = new CdClientContext();
@@ -101,9 +99,11 @@ namespace Uchu.World
                 var destroyable = await cdClient.DestructibleComponentTable.FirstOrDefaultAsync(
                     c => c.Id == componentId
                 );
-                
+
                 if (destroyable == default) return;
 
+                Smashable = destroyable.IsSmashable ?? false;
+                
                 Factions = new[] {destroyable.Faction ?? 1};
 
                 var faction = await cdClient.FactionsTable.FirstOrDefaultAsync(
@@ -301,16 +301,17 @@ namespace Uchu.World
             GameObject.Serialize(GameObject);
         }
 
-        public void Damage(uint value, GameObject source)
+        public async Task DamageAsync(uint value, GameObject source)
         {
             LatestDamageSource = source;
             
             var armorDamage = Math.Min(value, Armor);
 
             value -= armorDamage;
-            Armor -= armorDamage;
-
-            Health -= Math.Min(value, Health);
+            
+            await SetArmorAsync(Armor - armorDamage);
+            
+            await SetHealthAsync(Health - Math.Min(value, Health));
 
             if (source != default && GameObject is Player)
             {
@@ -318,14 +319,15 @@ namespace Uchu.World
             }
         }
 
-        public void Heal(uint value)
+        public async Task HealAsync(uint value)
         {
             var armorHeal = Math.Min(value, MaxArmor - Armor);
 
             value -= armorHeal;
-            Armor += armorHeal;
+            
+            await SetArmorAsync(Armor + armorHeal);
 
-            Health += Math.Min(value, MaxHealth - Health);
+            await SetHealthAsync(Health + Math.Min(value, MaxHealth - Health));
         }
 
         public async Task BoostBaseHealth(uint delta)
@@ -338,9 +340,9 @@ namespace Uchu.World
 
             character.BaseHealth += (int) delta;
 
-            MaxHealth += delta;
+            await SetMaxHealthAsync(MaxHealth + delta);
 
-            Health += delta;
+            await SetHealthAsync(Health + delta);
 
             await ctx.SaveChangesAsync();
         }
@@ -355,9 +357,9 @@ namespace Uchu.World
 
             character.BaseImagination += (int) delta;
 
-            MaxImagination += delta;
+            await SetMaxImaginationAsync(MaxImagination + delta);
 
-            Imagination += delta;
+            await SetImaginationAsync(Imagination + delta);
 
             await ctx.SaveChangesAsync();
         }
@@ -387,18 +389,20 @@ namespace Uchu.World
             MaxImagination = Imagination;
         }
 
-        private void CollectPlayerStats()
+        private async Task CollectPlayerStatsAsync()
         {
             if (!(GameObject is Player)) return;
-            
-            using var ctx = new UchuContext();
 
-            var character = ctx.Characters.First(c => c.Id == GameObject.Id);
+            await using var ctx = new UchuContext();
+
+            var character = await ctx.Characters.FirstAsync(
+                c => c.Id == GameObject.Id
+            );
 
             /*
              * Any additional stats gets added on by skills.
              */
-            
+
             Health = (uint) character.CurrentHealth;
             MaxHealth = (uint) character.BaseHealth;
 
@@ -417,35 +421,34 @@ namespace Uchu.World
 
             WriteStats(writer);
 
-            if (HasStats)
+            writer.WriteBit(false);
+            writer.WriteBit(false);
+
+            if (Smashable)
             {
                 writer.WriteBit(false);
                 writer.WriteBit(false);
-
-                if (Smashable)
-                {
-                    writer.WriteBit(false);
-                    writer.WriteBit(false);
-                }
             }
 
-            writer.WriteBit(true);
-            writer.WriteBit(false);
+            WriteSuffix(writer);
         }
 
         public void Serialize(BitWriter writer)
         {
             WriteStats(writer);
 
+            WriteSuffix(writer);
+        }
+
+        private void WriteSuffix(BitWriter writer)
+        {
             writer.WriteBit(true);
             writer.WriteBit(false);
         }
 
         private void WriteStats(BitWriter writer)
         {
-            writer.WriteBit(HasStats);
-            
-            if (!HasStats) return;
+            writer.WriteBit(true);
 
             writer.Write(Health);
             writer.Write<float>(MaxHealth);
@@ -469,7 +472,7 @@ namespace Uchu.World
 
             foreach (var faction in Factions) writer.Write(faction);
 
-            writer.WriteBit(Smashable && !GameObject.TryGetComponent<QuickBuildComponent>(out _));
+            writer.WriteBit(Smashable);
         }
     }
 }

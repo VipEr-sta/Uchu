@@ -111,7 +111,7 @@ namespace Uchu.Core
                 return;
             }
 
-            lock (Lock)
+            //lock (Lock)
             {
                 if (color == ConsoleColor.White)
                 {
@@ -129,7 +129,8 @@ namespace Uchu.Core
                 message = $"[{level}]{padding} {message}";
 
 #if DEBUG
-                padding = new string(Enumerable.Repeat(' ', 120 - message.Length).ToArray());
+                var amount = 140 - message.Length;
+                padding = new string(Enumerable.Repeat(' ', amount > 0 ? amount : 1).ToArray());
 
                 message = $"{message}{padding}|";
 

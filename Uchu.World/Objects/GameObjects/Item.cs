@@ -27,7 +27,12 @@ namespace Uchu.World
                 );
             });
             
-            Listen(OnDestroyed, RemoveFromInventoryAsync);
+            Listen(OnDestroyed, () =>
+            {
+                Inventory.UnManageItem(this);
+                
+                return Task.CompletedTask;
+            });
         }
 
         public AsyncEvent OnConsumed { get; }
@@ -322,8 +327,8 @@ namespace Uchu.World
             if (count <= 0)
             {
                 await DisassembleAsync();
-                
-                await DestroyAsync(this);
+
+                await RemoveFromInventoryAsync();
             }
         }
 
@@ -342,7 +347,7 @@ namespace Uchu.World
 
             await DisassembleAsync();
 
-            await DestroyAsync(this);
+            await RemoveFromInventoryAsync();
         }
 
         private async Task DisassembleAsync()
@@ -404,15 +409,19 @@ namespace Uchu.World
 
         private async Task RemoveFromInventoryAsync()
         {
-            Inventory.UnManageItem(this);
-            
             await using var ctx = new UchuContext();
 
-            var item = await ctx.InventoryItems.FirstAsync(i => i.Id == Id);
+            var character = await ctx.Characters.Include(c => c.Items).FirstAsync(
+                c => c.Id == Player.Id
+            );
+            
+            var item = character.Items.First(i => i.Id == Id);
 
-            item.Character.Items.Remove(item);
+            character.Items.Remove(item);
 
             await ctx.SaveChangesAsync();
+                
+            await DestroyAsync(this);
         }
     }
 }

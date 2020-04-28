@@ -53,8 +53,6 @@ namespace Uchu.World
 
                 Stats = GameObject.GetComponent<Stats>();
 
-                Stats.HasStats = false;
-
                 Listen(Stats.OnDeath, async () =>
                 {
                     await SmashAsync(

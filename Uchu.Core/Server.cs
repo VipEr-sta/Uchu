@@ -223,7 +223,7 @@ namespace Uchu.Core
 
             ServerStopped?.Invoke();
 
-            Certificate.Dispose();
+            Certificate?.Dispose();
             
             return RakNetServer.ShutdownAsync();
         }

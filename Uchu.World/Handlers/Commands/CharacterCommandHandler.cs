@@ -279,11 +279,6 @@ namespace Uchu.World.Handlers.Commands
             {
                 info.Append($"\n{component.GetType().Name}");
 
-                if (component is Stats stats)
-                {
-                    info.Append($" {stats.HasStats}");
-                }
-
                 if (!arguments.Contains("-p")) continue;
 
                 foreach (var property in component.GetType().GetProperties())
@@ -630,28 +625,32 @@ namespace Uchu.World.Handlers.Commands
                 return "world <zoneId>";
 
             if (!int.TryParse(arguments[0], out var id)) return "Invalid <zoneId>";
-            
-            //
-            // We don't want to lock up the server on a world server request, as it may take time.
-            //
-            
-            player.Zone.BroadcastMessage(new SetStunnedMessage
-            {
-                Associate = player,
-                CantMove = true,
-                CantJump = true,
-                CantAttack = true,
-                CantTurn = true,
-                CantUseItem = true,
-                CantEquip = true,
-                CantInteract = true
-            });
 
             var _ = Task.Run(async () =>
             {
+                //
+                // We don't want to lock up the server on a world server request, as it may take time.
+                //
+                
                 if (!await player.SendToWorldAsync((ZoneId) id))
                 {
                     player.SendChatMessage($"Failed to transfer to {id}, please try later.");
+                }
+                else
+                {
+                    player.SendChatMessage($"Transfer to {id} initialized, please wait.");
+
+                    player.Zone.BroadcastMessage(new SetStunnedMessage
+                    {
+                        Associate = player,
+                        CantMove = true,
+                        CantJump = true,
+                        CantAttack = true,
+                        CantTurn = true,
+                        CantUseItem = true,
+                        CantEquip = true,
+                        CantInteract = true
+                    });
                 }
             });
             

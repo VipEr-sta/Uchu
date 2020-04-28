@@ -210,10 +210,7 @@ namespace Uchu.World
                     await AddComponentAsync(attribute.Type);
                 }
 
-                if (Started)
-                {
-                    await StartAsync(component);
-                }
+                await StartAsync(component);
 
                 return component;
             }

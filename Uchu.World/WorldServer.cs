@@ -268,6 +268,8 @@ namespace Uchu.World
             reader.Read(gameMessage);
 
             await InvokeHandlerAsync(messageHandler, player);
+            
+            Logger.Debug($"Invoked: {messageHandler.Info.Name}");
         }
 
         private static async Task InvokeHandlerAsync(Handler handler, Player player)
@@ -276,9 +278,16 @@ namespace Uchu.World
 
             var parameters = new object[] {handler.Packet, player};
 
-            var res = handler.Info.Invoke(handler.Group, parameters);
+            try
+            {
+                var res = handler.Info.Invoke(handler.Group, parameters);
 
-            if (task) await (Task) res;
+                if (task) await (Task) res;
+            }
+            catch (Exception e)
+            {
+                Logger.Error(e);
+            }
         }
     }
 }
