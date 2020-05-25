@@ -13,9 +13,9 @@ namespace Uchu.World.Systems.Behaviors
             Action = await GetBehavior("action");
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await Action.ExecuteAsync(context, branchContext);
+            await Action.ExecuteAsync(context, branch);
         }
     }
 }

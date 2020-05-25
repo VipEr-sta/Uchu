@@ -13,18 +13,18 @@ namespace Uchu.World.Systems.Behaviors
             StunCaster = await GetParameter<int>("stun_caster");
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
             
-            if (StunCaster == 1 || branchContext.Target == context.Associate) return;
+            if (StunCaster == 1 || branch.Target == context.Associate) return;
 
-            context.Reader.ReadBit();
+            branch.Reader.ReadBit();
         }
 
         public override async Task CalculateAsync(NpcExecutionContext context, ExecutionBranchContext branchContext)
         {
-            if (StunCaster == 1) return;
+            if (StunCaster == 1 || branchContext.Target == context.Associate) return;
 
             context.Writer.WriteBit(false);
         }

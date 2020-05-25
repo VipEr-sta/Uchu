@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Uchu.World.Systems.Behaviors
@@ -12,21 +13,26 @@ namespace Uchu.World.Systems.Behaviors
         {
             var actions = GetParameters();
 
-            Behaviors = new BehaviorBase[actions.Length];
+            var behaviors = new List<BehaviorBase>();
 
-            for (var i = 0; i < actions.Length; i++)
+            foreach (var action in actions)
             {
-                Behaviors[i] = await GetBehavior($"behavior {i + 1}");
+                if (action.ParameterID.StartsWith("behavior"))
+                {
+                    behaviors.Add(await GetBehavior(action.ParameterID));
+                }
             }
+            
+            Behaviors = behaviors.ToArray();
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
             
             foreach (var behavior in Behaviors)
             {
-                await behavior.ExecuteAsync(context, branchContext);
+                await behavior.ExecuteAsync(context, branch);
             }
         }
 

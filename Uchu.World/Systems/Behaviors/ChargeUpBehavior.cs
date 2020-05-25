@@ -17,20 +17,20 @@ namespace Uchu.World.Systems.Behaviors
             MaxDuration = await GetParameter<float>("max_duration");
         }
         
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
             
-            var handle = context.Reader.Read<uint>();
+            var handle = branch.Reader.Read<uint>();
             
-            RegisterHandle(handle, context, branchContext);
+            RegisterHandle(handle, context, branch);
         }
 
-        public override async Task SyncAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task SyncAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
             
-            await Action.ExecuteAsync(context, branchContext);
+            await Action.ExecuteAsync(context, branch);
         }
     }
 }

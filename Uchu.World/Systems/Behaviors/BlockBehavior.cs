@@ -11,9 +11,9 @@ namespace Uchu.World.Systems.Behaviors
             return Task.CompletedTask;
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
         }
     }
 }

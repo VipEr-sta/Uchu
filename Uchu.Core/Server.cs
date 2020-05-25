@@ -116,6 +116,9 @@ namespace Uchu.Core
 
             SsoService = new SsoService(Config.SsoConfig?.Domain ?? "");
 
+            SessionCache = new DatabaseCache();
+            
+            /*
             try
             {
                 SessionCache = new RedisSessionCache();
@@ -126,6 +129,7 @@ namespace Uchu.Core
 
                 SessionCache = new DatabaseCache();
             }
+            */
 
             Logger.Information($"Server {Id} configured on port: {Port}");
         }

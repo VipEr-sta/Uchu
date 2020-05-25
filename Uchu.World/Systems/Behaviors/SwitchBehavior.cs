@@ -27,43 +27,29 @@ namespace Uchu.World.Systems.Behaviors
             IsEnemyFaction = (await GetParameter("isEnemyFaction"))?.Value > 0;
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
-            
-            /*
-            var handle = context.Reader.Read<uint>();
-
-            RegisterHandle(handle, context, branchContext);
-            */
+            await base.ExecuteAsync(context, branch);
 
             var state = true;
 
             if (Imagination > 0 || !IsEnemyFaction)
             {
-                state = context.Reader.ReadBit();
+                state = branch.Reader.ReadBit();
             }
 
             if (state)
             {
-                await ActionTrue.ExecuteAsync(context, branchContext);
+                await ActionTrue.ExecuteAsync(context, branch);
             }
             else
             {
-                await ActionFalse.ExecuteAsync(context, branchContext);
+                await ActionFalse.ExecuteAsync(context, branch);
             }
         }
 
         public override async Task CalculateAsync(NpcExecutionContext context, ExecutionBranchContext branchContext)
         {
-            /*
-            var syncId = context.Associate.GetComponent<SkillComponent>().ClaimSyncId();
-
-            context.Writer.Write(syncId);
-            */
-            
-            // TODO
-
             var state = true;
             
             if (Imagination > 0 || !IsEnemyFaction)
@@ -81,24 +67,6 @@ namespace Uchu.World.Systems.Behaviors
             {
                 await ActionFalse.CalculateAsync(context, branchContext);
             }
-
-            /*
-            var _ = Task.Run(async () =>
-            {
-                context = context.Copy();
-                
-                await Action.CalculateAsync(context, branchContext);
-
-                context.Sync(syncId);
-            });
-            */
         }
-
-        /*
-        public override async Task SyncAsync(ExecutionContext context, ExecutionBranchContext branchContext)
-        {
-            await Action.ExecuteAsync(context, branchContext);
-        }
-        */
     }
 }

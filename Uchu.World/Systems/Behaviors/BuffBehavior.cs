@@ -28,7 +28,7 @@ namespace Uchu.World.Systems.Behaviors
             Brain = await GetParameter<int>("brain");
         }
 
-        public override Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
             if (!context.Associate.TryGetComponent<Stats>(out var stats)) return Task.CompletedTask;
 

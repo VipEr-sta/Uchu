@@ -21,21 +21,21 @@ namespace Uchu.World.Systems.Behaviors
             InteruptCharge = await GetParameter<int>("interupt_charge");
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
 
-            if (branchContext.Target != context.Associate)
+            if (branch.Target != context.Associate)
             {
-                context.Reader.ReadBit();
+                branch.Reader.ReadBit();
             }
 
             if (InterruptBlock == 0)
             {
-                context.Reader.ReadBit();
+                branch.Reader.ReadBit();
             }
 
-            context.Reader.ReadBit();
+            branch.Reader.ReadBit();
         }
 
         public override async Task CalculateAsync(NpcExecutionContext context, ExecutionBranchContext branchContext)

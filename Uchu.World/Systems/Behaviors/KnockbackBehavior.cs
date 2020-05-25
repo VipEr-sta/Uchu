@@ -18,11 +18,11 @@ namespace Uchu.World.Systems.Behaviors
             Time = await GetParameter<int>("time_ms");
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
 
-            context.Reader.ReadBit();
+            branch.Reader.ReadBit();
         }
 
         public override async Task CalculateAsync(NpcExecutionContext context, ExecutionBranchContext branchContext)

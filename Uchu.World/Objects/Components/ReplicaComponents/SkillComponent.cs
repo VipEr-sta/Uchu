@@ -252,32 +252,18 @@ namespace Uchu.World
         {
             if (!(GameObject is Player)) return;
             
-            try
-            {
-                if (message.OptionalTarget != null)
-                {
-                    // There should be more to this
-                    if (!message.OptionalTarget.Alive)
-                        message.OptionalTarget = null;
-                    else if (!message.OptionalTarget.GetComponent<DestructibleComponent>()?.Alive ?? true)
-                        message.OptionalTarget = null;
-                    /*
-                    else if (Vector3.Distance(message.OptionalTarget.Transform.Position, Transform.Position) > TargetRange)
-                        message.OptionalTarget = null;
-                    */
-                }
-            }
-            catch (Exception e)
-            {
-                Logger.Error(e);
-                
-                return;
-            }
-
             var stream = new MemoryStream(message.Content);
             using (var reader = new BitReader(stream, leaveOpen: true))
             {
                 var tree = await BehaviorTree.FromSkillAsync(message.SkillId);
+
+                if (message.OptionalTarget != null)
+                {
+                    if (!message.OptionalTarget.Alive)
+                    {
+                        message.OptionalTarget = default;
+                    }
+                }
                 
                 var context = await tree.ExecuteAsync(
                     GameObject,
@@ -330,7 +316,7 @@ namespace Uchu.World
 
             if (found)
             {
-                await behavior.SyncAsync(message.BehaviorHandle, reader);
+                await behavior.SyncAsync(message.BehaviorHandle, reader, message.Done);
             }
 
             if (message.Done)

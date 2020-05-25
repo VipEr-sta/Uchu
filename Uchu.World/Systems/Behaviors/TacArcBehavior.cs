@@ -21,6 +21,8 @@ namespace Uchu.World.Systems.Behaviors
         public BehaviorBase MissBehavior { get; set; }
         
         public int MaxTargets { get; set; }
+
+        public float MaxRange { get; set; }
         
         public bool UsePickedTarget { get; set; }
         
@@ -35,26 +37,38 @@ namespace Uchu.World.Systems.Behaviors
 
             MaxTargets = await GetParameter<int>("max targets");
 
+            MaxRange = await GetParameter<float>("max range");
+
             UsePickedTarget = await GetParameter<int>("use_picked_target") > 0;
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
 
-            if (UsePickedTarget && context.ExplicitTarget != null)
+            if (branch.Target != null && UsePickedTarget)
             {
-                var branch = new ExecutionBranchContext(context.ExplicitTarget)
                 {
-                    Duration = branchContext.Duration
-                };
+                    var distance = Vector3.Distance(
+                        context.Associate.Transform.Position,
+                        branch.Target.Transform.Position
+                    );
 
-                await ActionBehavior.ExecuteAsync(context, branch);
-                
-                return;
+                    if (distance > MaxRange)
+                    {
+                        branch.Target = default;
+                    }
+                }
+
+                if (branch.Target != null)
+                {
+                    await ActionBehavior.ExecuteAsync(context, branch);
+
+                    return;
+                }
             }
-            
-            var hit = context.Reader.ReadBit();
+
+            var hit = branch.Reader.ReadBit();
             
             if (hit) // Hit
             {
@@ -62,14 +76,14 @@ namespace Uchu.World.Systems.Behaviors
 
                 if (CheckEnvironment)
                 {
-                    context.Reader.ReadBit();
+                    branch.Reader.ReadBit();
                 }
 
-                var specifiedTargets = context.Reader.Read<uint>();
+                var specifiedTargets = branch.Reader.Read<uint>();
 
                 for (var i = 0; i < specifiedTargets; i++)
                 {
-                    var targetId = context.Reader.Read<long>();
+                    var targetId = branch.Reader.Read<long>();
 
                     if (!context.Associate.Zone.TryGetGameObject(targetId, out var target))
                     {
@@ -83,10 +97,7 @@ namespace Uchu.World.Systems.Behaviors
 
                 foreach (var target in targets)
                 {
-                    var branch = new ExecutionBranchContext(target)
-                    {
-                        Duration = branchContext.Duration
-                    };
+                    branch.Target = target;
 
                     await ActionBehavior.ExecuteAsync(context, branch);
                 }
@@ -95,20 +106,20 @@ namespace Uchu.World.Systems.Behaviors
             {
                 if (Blocked)
                 {
-                    var isBlocked = context.Reader.ReadBit();
+                    var isBlocked = branch.Reader.ReadBit();
 
                     if (isBlocked) // Is blocked
                     {
-                        await BlockedBehavior.ExecuteAsync(context, branchContext);
+                        await BlockedBehavior.ExecuteAsync(context, branch);
                     }
                     else
                     {
-                        await MissBehavior.ExecuteAsync(context, branchContext);
+                        await MissBehavior.ExecuteAsync(context, branch);
                     }
                 }
                 else
                 {
-                    await MissBehavior.ExecuteAsync(context, branchContext);
+                    await MissBehavior.ExecuteAsync(context, branch);
                 }
             }
         }
@@ -178,19 +189,11 @@ namespace Uchu.World.Systems.Behaviors
 
                 foreach (var target in selectedTargets)
                 {
-                    if (!(target is Player player)) continue;
-
-                    player.SendChatMessage($"You are a target! [{context.SkillSyncId}]");
-                }
-
-                foreach (var target in selectedTargets)
-                {
-                    var branch = new ExecutionBranchContext(target)
+                    await ActionBehavior.CalculateAsync(context, new ExecutionBranchContext
                     {
+                        Target = target,
                         Duration = branchContext.Duration
-                    };
-
-                    await ActionBehavior.CalculateAsync(context, branch);
+                    });
                 }
             }
             else

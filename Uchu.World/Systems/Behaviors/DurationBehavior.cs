@@ -21,13 +21,13 @@ namespace Uchu.World.Systems.Behaviors
             ActionDuration = (int) duration.Value;
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
 
-            branchContext.Duration = ActionDuration * 1000;
+            branch.Duration = ActionDuration * 1000;
             
-            await Action.ExecuteAsync(context, branchContext);
+            await Action.ExecuteAsync(context, branch);
         }
 
         public override async Task CalculateAsync(NpcExecutionContext context, ExecutionBranchContext branchContext)

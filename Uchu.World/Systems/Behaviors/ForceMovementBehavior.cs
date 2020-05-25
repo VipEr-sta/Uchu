@@ -20,35 +20,34 @@ namespace Uchu.World.Systems.Behaviors
             HitActionFaction = await GetBehavior("hit_action_faction");
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
 
             var array = new[] {HitAction, HitActionEnemy, HitActionFaction};
             
-            if (array.All(b => b?.BehaviorId == 0)) return;
+            if (array.All(b => b is EmptyBehavior)) return;
 
-            var handle = context.Reader.Read<uint>();
+            var handle = branch.Reader.Read<uint>();
 
-            RegisterHandle(handle, context, branchContext);
+            RegisterHandle(handle, context, branch);
         }
 
-        public override async Task SyncAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task SyncAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            var actionId = context.Reader.Read<uint>();
+            var actionId = branch.Reader.Read<uint>();
 
             var action = await GetBehavior(actionId);
 
-            var id = context.Reader.Read<ulong>();
+            var target = branch.Reader.ReadGameObject(context.Associate.Zone);
+            
+            context.DebugMessage($"[{BehaviorId}] Force: {action.BehaviorId} ; {target}");
 
-            context.Associate.Zone.TryGetGameObject((long) id, out var target);
-
-            var branch = new ExecutionBranchContext(target)
+            await action.ExecuteAsync(context, new ExecutionBranchContext
             {
-                Duration = branchContext.Duration
-            };
-
-            await action.ExecuteAsync(context, branch);
+                Target = target,
+                Duration = branch.Duration
+            });
         }
     }
 }

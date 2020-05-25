@@ -201,7 +201,10 @@ namespace Uchu.World.Systems.Behaviors
 
             context.Root = root;
 
-            var branchContext = new ExecutionBranchContext(target);
+            var branchContext = new ExecutionBranchContext
+            {
+                Target = target
+            };
 
             try
             {
@@ -227,7 +230,7 @@ namespace Uchu.World.Systems.Behaviors
         public async Task<ExecutionContext> ExecuteAsync(GameObject associate, BitReader reader,
             SkillCastType castType = SkillCastType.OnEquip, GameObject target = default)
         {
-            var context = new ExecutionContext(associate, reader, default)
+            var context = new ExecutionContext(associate, default)
             {
                 ExplicitTarget = target
             };
@@ -238,7 +241,11 @@ namespace Uchu.World.Systems.Behaviors
                 {
                     context.Root = root;
 
-                    var branchContext = new ExecutionBranchContext(associate);
+                    var branchContext = new ExecutionBranchContext
+                    {
+                        Target = target,
+                        Reader = reader
+                    };
 
                     await root.ExecuteAsync(context, branchContext);
                 }
@@ -250,7 +257,10 @@ namespace Uchu.World.Systems.Behaviors
             {
                 context.Root = root;
 
-                var branchContext = new ExecutionBranchContext(associate);
+                var branchContext = new ExecutionBranchContext
+                {
+                    Target = target
+                };
 
                 await root.ExecuteAsync(context, branchContext);
             }
@@ -260,7 +270,7 @@ namespace Uchu.World.Systems.Behaviors
 
         public async Task<ExecutionContext> UseAsync(GameObject associate, BitReader reader, GameObject target)
         {
-            var context = new ExecutionContext(associate, reader, default);
+            var context = new ExecutionContext(associate, default);
 
             if (!RootBehaviors.TryGetValue(SkillCastType.OnUse, out var list)) return context;
 
@@ -268,8 +278,12 @@ namespace Uchu.World.Systems.Behaviors
             {
                 context.Root = root;
 
-                var branchContext = new ExecutionBranchContext(target);
-
+                var branchContext = new ExecutionBranchContext
+                {
+                    Target = target,
+                    Reader = reader
+                };
+                
                 await root.ExecuteAsync(context, branchContext);
             }
 
@@ -278,8 +292,7 @@ namespace Uchu.World.Systems.Behaviors
 
         public async Task<ExecutionContext> MountAsync(GameObject associate)
         {
-            var context = new ExecutionContext(associate, new BitReader(new MemoryStream()),
-                new BitWriter(new MemoryStream()));
+            var context = new ExecutionContext(associate, new BitWriter(new MemoryStream()));
 
             if (!RootBehaviors.TryGetValue(SkillCastType.OnEquip, out var list)) return context;
 
@@ -287,8 +300,12 @@ namespace Uchu.World.Systems.Behaviors
             {
                 context.Root = root;
 
-                var branchContext = new ExecutionBranchContext(associate);
-
+                var branchContext = new ExecutionBranchContext
+                {
+                    Target = associate,
+                    Reader = new BitReader(new MemoryStream())
+                };
+                
                 await root.ExecuteAsync(context, branchContext);
             }
 
@@ -297,8 +314,7 @@ namespace Uchu.World.Systems.Behaviors
 
         public async Task<ExecutionContext> DismantleAsync(GameObject associate)
         {
-            var context = new ExecutionContext(associate, new BitReader(new MemoryStream()),
-                new BitWriter(new MemoryStream()));
+            var context = new ExecutionContext(associate, new BitWriter(new MemoryStream()));
 
             if (!RootBehaviors.TryGetValue(SkillCastType.OnEquip, out var list)) return context;
 
@@ -306,7 +322,11 @@ namespace Uchu.World.Systems.Behaviors
             {
                 context.Root = root;
 
-                var branchContext = new ExecutionBranchContext(associate);
+                var branchContext = new ExecutionBranchContext
+                {
+                    Target = associate,
+                    Reader = new BitReader(new MemoryStream())
+                };
 
                 await root.DismantleAsync(context, branchContext);
             }

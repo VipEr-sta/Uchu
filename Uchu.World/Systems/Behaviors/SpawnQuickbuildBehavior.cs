@@ -37,9 +37,9 @@ namespace Uchu.World.Systems.Behaviors
             SpawnFailAction = await GetBehavior("spawn_fail_action");
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
             
             var quickBuild = GameObject.Instantiate(
                 context.Associate.Zone,
@@ -56,7 +56,7 @@ namespace Uchu.World.Systems.Behaviors
 
             var _ = Task.Run(async () =>
             {
-                await Task.Delay(branchContext.Duration);
+                await Task.Delay(branch.Duration);
 
                 Object.Destroy(quickBuild);
             });

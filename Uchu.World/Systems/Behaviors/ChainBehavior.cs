@@ -17,15 +17,14 @@ namespace Uchu.World.Systems.Behaviors
 
             var behaviors = new List<BehaviorBase>();
 
-            for (var i = 0; i < actions.Length; i++)
+            foreach (var action in actions)
             {
-                var behavior = await GetBehavior($"behavior {i + 1}");
-                
-                if (behavior == default) continue;
-
-                behaviors.Add(behavior);
+                if (action.ParameterID.StartsWith("behavior"))
+                {
+                    behaviors.Add(await GetBehavior(action.ParameterID));
+                }
             }
-
+            
             Behaviors = behaviors.ToArray();
             
             var delay = await GetParameter("chain_delay");
@@ -35,13 +34,13 @@ namespace Uchu.World.Systems.Behaviors
             Delay = (int) delay.Value;
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
             
-            var chainIndex = context.Reader.Read<uint>();
+            var chainIndex = branch.Reader.Read<uint>();
 
-            await Behaviors[chainIndex - 1].ExecuteAsync(context, branchContext);
+            await Behaviors[chainIndex - 1].ExecuteAsync(context, branch);
         }
 
         public override async Task CalculateAsync(NpcExecutionContext context, ExecutionBranchContext branchContext)

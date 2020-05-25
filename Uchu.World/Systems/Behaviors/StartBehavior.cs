@@ -17,11 +17,11 @@ namespace Uchu.World.Systems.Behaviors
             UseTarget = await GetParameter<int>("use_target");
         }
         
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
 
-            await Action.ExecuteAsync(context, branchContext);
+            await Action.ExecuteAsync(context, branch);
         }
     }
 }

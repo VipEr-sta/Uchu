@@ -6,15 +6,14 @@ namespace Uchu.World.Systems.Behaviors
     {
         public override BehaviorTemplateId Id => BehaviorTemplateId.PlayEffect;
         
-        public int EffectId { get; set; }
-        
-        public override async Task BuildAsync()
+        public override Task BuildAsync()
         {
-            var effectId = await GetParameter("effectID");
-            
-            if (effectId?.Value == null) return;
+            return Task.CompletedTask;
+        }
 
-            EffectId = (int) effectId.Value;
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
+        {
+            await PlayFxAsync("", branch.Target, 1000);
         }
     }
 }

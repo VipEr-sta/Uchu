@@ -30,21 +30,21 @@ namespace Uchu.World.Systems.Behaviors
             Delay = (int) (delay.Value * 1000);
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
 
-            var handle = context.Reader.Read<uint>();
+            var handle = branch.Reader.Read<uint>();
 
             for (var i = 0; i < Intervals; i++)
             {
-                RegisterHandle(handle, context, branchContext);
+                RegisterHandle(handle, context, branch);
             }
         }
 
-        public override async Task SyncAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task SyncAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await Action.ExecuteAsync(context, branchContext);
+            await Action.ExecuteAsync(context, branch);
         }
 
         public override Task CalculateAsync(NpcExecutionContext context, ExecutionBranchContext branchContext)
@@ -52,11 +52,6 @@ namespace Uchu.World.Systems.Behaviors
             var syncId = context.Associate.GetComponent<SkillComponent>().ClaimSyncId();
 
             context.Writer.Write(syncId);
-
-            if (branchContext.Target is Player player)
-            {
-                player.SendChatMessage($"Delay. [{context.SkillSyncId}] [{syncId}]");
-            }
 
             Task.Run(async () =>
             {
@@ -67,11 +62,6 @@ namespace Uchu.World.Systems.Behaviors
                 await Action.CalculateAsync(context, branchContext);
 
                 context.Sync(syncId);
-                
-                if (branchContext.Target is Player sPlayer)
-                {
-                    sPlayer.SendChatMessage($"Sync. [{context.SkillSyncId}] [{syncId}]");
-                }
             });
             
             return Task.CompletedTask;

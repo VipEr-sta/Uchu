@@ -5,8 +5,6 @@ namespace Uchu.World.Systems.Behaviors
 {
     public class MovementSwitchBehavior : BehaviorBase
     {
-        public MovementType MovementType { get; private set; }
-
         public override BehaviorTemplateId Id => BehaviorTemplateId.MovementSwitch;
         
         public BehaviorBase GroundBehavior { get; set; }
@@ -28,33 +26,33 @@ namespace Uchu.World.Systems.Behaviors
             JetpackBehavior = await GetBehavior("ground_action");
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
             
-            MovementType = (MovementType) context.Reader.Read<uint>();
+            var movementType = (MovementType) branch.Reader.Read<uint>();
 
-            switch (MovementType)
+            switch (movementType)
             {
                 case MovementType.Ground:
-                    await GroundBehavior.ExecuteAsync(context, branchContext);
+                    await GroundBehavior.ExecuteAsync(context, branch);
                     return;
                 case MovementType.Jump:
-                    await JumpBehavior.ExecuteAsync(context, branchContext);
+                    await JumpBehavior.ExecuteAsync(context, branch);
                     return;
                 case MovementType.Falling:
-                    await FallingBehavior.ExecuteAsync(context, branchContext);
+                    await FallingBehavior.ExecuteAsync(context, branch);
                     return;
                 case MovementType.DoubleJump:
-                    await DoubleJumpBehavior.ExecuteAsync(context, branchContext);
+                    await DoubleJumpBehavior.ExecuteAsync(context, branch);
                     return;
                 case MovementType.Jetpack:
-                    await JetpackBehavior.ExecuteAsync(context, branchContext);
+                    await JetpackBehavior.ExecuteAsync(context, branch);
                     return;
                 case MovementType.Stunned:
                     return;
                 default:
-                    throw new Exception($"Invalid {nameof(MovementType)}! Got {MovementType}!");
+                    throw new Exception($"Invalid {nameof(movementType)}! Got {movementType}!");
             }
         }
     }

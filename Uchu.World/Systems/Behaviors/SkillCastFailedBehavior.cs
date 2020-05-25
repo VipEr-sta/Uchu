@@ -13,7 +13,7 @@ namespace Uchu.World.Systems.Behaviors
             EffectId = await GetParameter<int>("effect_id");
         }
 
-        public override Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
             return Task.CompletedTask;
         }

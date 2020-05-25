@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
@@ -24,36 +26,47 @@ namespace Uchu.World.Systems.Behaviors
             Radius = await GetParameter<float>("radius");
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
 
-            var length = context.Reader.Read<uint>();
+            var length = branch.Reader.Read<uint>();
             
-            var targets = new GameObject[length];
+            context.DebugMessage($"[{BehaviorId}] Area: {length}");
+
+            if (length > MaxTargets)
+            {
+                length = (uint) MaxTargets;
+            }
+
+            var targets = new List<GameObject>();
 
             for (var i = 0; i < length; i++)
             {
-                var id = context.Reader.Read<ulong>();
+                var id = branch.Reader.Read<long>();
 
-                if (!context.Associate.Zone.TryGetGameObject((long) id, out var target))
+                if (!context.Associate.Zone.TryGetGameObject(id, out var target))
                 {
-                    Logger.Error($"{context.Associate} sent invalid AreaOfEffect target: {id}");
-
-                    continue;
+                    context.DebugMessage($"Invalid target: {id}");
+                    
+                    throw new Exception($"Invalid area of effect target: {id}");
                 }
                 
-                targets[i] = target;
+                context.DebugMessage($"[{BehaviorId}] Area: {target}");
+
+                targets.Add(target);
             }
             
             foreach (var target in targets)
             {
-                await Action.ExecuteAsync(context, new ExecutionBranchContext(target));
+                branch.Target = target;
+                
+                await Action.ExecuteAsync(context, branch);
             }
         }
 
         public override async Task CalculateAsync(NpcExecutionContext context, ExecutionBranchContext branchContext)
-        {
+        {    
             if (!context.Associate.TryGetComponent<BaseCombatAiComponent>(out var baseCombatAiComponent)) return;
 
             var validTarget = baseCombatAiComponent.SeekValidTargets();
@@ -71,14 +84,6 @@ namespace Uchu.World.Systems.Behaviors
                 return valid;
             }).ToArray();
 
-            foreach (var target in targets)
-            {
-                if (target is Player player)
-                {
-                    player.SendChatMessage("You are a AOE target!");
-                }
-            }
-            
             if (targets.Length > 0)
                 context.FoundTarget = true;
 
@@ -91,7 +96,11 @@ namespace Uchu.World.Systems.Behaviors
 
             foreach (var target in targets)
             {
-                await Action.CalculateAsync(context, new ExecutionBranchContext(target));
+                await Action.CalculateAsync(context, new ExecutionBranchContext
+                {
+                    Target = target,
+                    Duration = branchContext.Duration
+                });
             }
         }
     }

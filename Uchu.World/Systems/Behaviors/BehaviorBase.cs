@@ -23,8 +23,13 @@ namespace Uchu.World.Systems.Behaviors
         
         public string EffectHandler { get; set; }
 
-        public virtual Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public virtual Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
+            if (context.Associate is Player player)
+            {
+                player.SendChatMessage($"[{BehaviorId:0000}] {Id} -> {branch.Target?.ClientName ?? "<null>"}", PlayerChatChannel.Normal);
+            }
+            
             return Task.CompletedTask;
         }
 
@@ -33,7 +38,7 @@ namespace Uchu.World.Systems.Behaviors
             return Task.CompletedTask;
         }
 
-        public virtual Task SyncAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public virtual Task SyncAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
             return Task.CompletedTask;
         }
@@ -103,16 +108,14 @@ namespace Uchu.World.Systems.Behaviors
 
         protected void RegisterHandle(uint handle, ExecutionContext context, ExecutionBranchContext branchContext)
         {
-            context.RegisterHandle(handle, async reader =>
+            context.DebugMessage($"Handle: {handle}");
+
+            context.RegisterHandle(handle, async (reader, fallowUp) =>
             {
-                var newBranchContext = new ExecutionBranchContext(branchContext.Target)
-                {
-                    Duration = branchContext.Duration
-                };
+                branchContext.Reader = reader;
+                branchContext.FallowUp = fallowUp;
 
-                context.Reader = reader;
-
-                await SyncAsync(context, newBranchContext);
+                await SyncAsync(context, branchContext);
             });
         }
 

@@ -37,7 +37,7 @@ namespace Uchu.World.Systems.Behaviors
         }
         
         public NpcExecutionContext(GameObject associate, BitWriter writer, int skillId, uint skillSyncId, Vector3 calculatingPosition) 
-            : base(associate, default, writer)
+            : base(associate, writer)
         {
             CalculatingPosition = calculatingPosition;
             SkillId = skillId;
@@ -67,6 +67,8 @@ namespace Uchu.World.Systems.Behaviors
 
         public bool IsValidTarget(GameObject gameObject)
         {
+            if (gameObject?.Transform == null) return false;
+            
             if (MaxRange.Equals(0)) return true;
             
             var distance = Vector3.Distance(gameObject.Transform.Position, Associate.Transform.Position);

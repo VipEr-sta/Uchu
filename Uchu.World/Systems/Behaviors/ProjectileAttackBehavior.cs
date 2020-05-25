@@ -31,17 +31,19 @@ namespace Uchu.World.Systems.Behaviors
             TrackRadius = await GetParameter<float>("track_radius"); // ???
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
             
-            var target = context.Reader.ReadGameObject(context.Associate.Zone);
+            var target = branch.Reader.ReadGameObject(context.Associate.Zone);
 
+            branch.Target = target;
+            
             var count = ProjectileCount == 0 ? 1 : ProjectileCount;
             
             for (var i = 0; i < count; i++)
             {
-                StartProjectile(context, target);
+                StartProjectile(context, branch);
             }
         }
 
@@ -94,17 +96,17 @@ namespace Uchu.World.Systems.Behaviors
             });
         }
 
-        private void StartProjectile(ExecutionContext context, GameObject target)
+        private void StartProjectile(ExecutionContext context, ExecutionBranchContext branch)
         {
-            var projectileId = context.Reader.Read<long>();
+            var projectileId = branch.Reader.Read<long>();
 
             var projectile = Object.Instantiate<Projectile>(context.Associate.Zone);
 
             projectile.Owner = context.Associate;
             projectile.ClientObjectId = projectileId;
-            projectile.Target = target;
+            projectile.Target = branch.Target;
             projectile.Lot = ProjectileLot;
-            projectile.Destination = target.Transform.Position;
+            projectile.Destination = branch.Target.Transform.Position;
             projectile.RadiusCheck = TrackRadius;
             projectile.MaxDistance = MaxDistance;
             

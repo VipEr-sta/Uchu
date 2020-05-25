@@ -12,6 +12,8 @@ namespace Uchu.World.Systems.Behaviors
         
         public float DistanceToTarget { get; set; }
         
+        public float DefaultValue { get; set; }
+        
         public Dictionary<BehaviorBase, float> Behaviors { get; set; }
 
         public override async Task BuildAsync()
@@ -22,37 +24,43 @@ namespace Uchu.World.Systems.Behaviors
 
             Behaviors = new Dictionary<BehaviorBase, float>();
 
-            var parameters = GetParameters();
+            var behaviors = new Dictionary<BehaviorBase, float>();
+
+            var index = 1;
             
-            for (var index = 0; index < parameters.Length; index++)
+            while (true)
             {
-                var behavior = await GetBehavior($"behavior {index + 1}");
+                var behavior = await GetBehavior($"behavior {index}");
                 
-                if (behavior == default || behavior.Id == BehaviorTemplateId.Empty) continue;
+                if (behavior is EmptyBehavior) break;
 
-                var value = await GetParameter<float>($"value {index + 1}");
+                var value = await GetParameter<float>($"value {index}");
 
-                Behaviors[behavior] = value;
+                behaviors[behavior] = value;
+
+                index++;
             }
+
+            DefaultValue = await GetParameter<float>("value 1");
+            
+            Behaviors = behaviors;
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-            await base.ExecuteAsync(context, branchContext);
+            await base.ExecuteAsync(context, branch);
 
-            var value = context.Reader.Read<float>();
+            var value = branch.Reader.Read<float>();
             
-            var defaultValue = Behaviors.ToArray()[0].Value;
-
-            if (value <= defaultValue) value = defaultValue;
+            context.DebugMessage($"[{BehaviorId}] Value: {value}");
             
-            foreach (var (behavior, mark) in Behaviors.ToArray().Reverse())
+            if (value <= DefaultValue) value = DefaultValue;
+            
+            foreach (var (behavior, mark) in Behaviors)
             {
                 if (value < mark) continue;
 
-                await behavior.ExecuteAsync(context, branchContext);
-                
-                break;
+                await behavior.ExecuteAsync(context, branch);
             }
         }
     }

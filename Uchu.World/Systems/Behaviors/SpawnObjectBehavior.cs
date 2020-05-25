@@ -26,9 +26,9 @@ namespace Uchu.World.Systems.Behaviors
             UpdatePositionWithParent = await GetParameter<int>("updatePositionWithParent");
         }
 
-        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branchContext)
+        public override async Task ExecuteAsync(ExecutionContext context, ExecutionBranchContext branch)
         {
-             await base.ExecuteAsync(context, branchContext);
+             await base.ExecuteAsync(context, branch);
 
              var obj = GameObject.Instantiate<AuthoredGameObject>(
                  context.Associate.Zone,
@@ -44,7 +44,7 @@ namespace Uchu.World.Systems.Behaviors
 
              var _ = Task.Run(async () =>
              {
-                 await Task.Delay(branchContext.Duration);
+                 await Task.Delay(branch.Duration);
 
                  Object.Destroy(obj);
              });
