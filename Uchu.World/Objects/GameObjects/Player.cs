@@ -10,6 +10,7 @@ using RakDotNet.IO;
 using Uchu.Api.Models;
 using Uchu.Core;
 using Uchu.Core.Client;
+using Uchu.Core.Resources;
 using Uchu.Physics;
 using Uchu.World.Filters;
 using Uchu.World.Social;
@@ -19,17 +20,13 @@ namespace Uchu.World
     public sealed class Player : GameObject
     {
         private float _gravityScale = 1;
-        
         private Player()
         {
-            OnFireServerEvent = new AsyncEventDictionary<string, FireServerEventMessage>();
-
+            OnRespondToMission = new Event<int, GameObject, Lot>();
+            OnFireServerEvent = new Event<string, FireServerEventMessage>();
             OnPositionUpdate = new Event<Vector3, Quaternion>();
-
             OnLootPickup = new Event<Lot>();
-            
             OnWorldLoad = new Event();
-
             Lock = new SemaphoreSlim(1, 1);
 
             Listen(OnStart, async () =>
@@ -37,9 +34,7 @@ namespace Uchu.World
                 Connection.Disconnected += reason =>
                 {
                     Connection = default;
-                    
                     Destroy(this);
-                    
                     return Task.CompletedTask;
                 };
 
@@ -47,7 +42,7 @@ namespace Uchu.World
 
                 if (TryGetComponent<DestructibleComponent>(out var destructibleComponent))
                 {
-                    destructibleComponent.OnResurrect.AddListener(() => { GetComponent<Stats>().Imagination = 6; });
+                    destructibleComponent.OnResurrect.AddListener(() => { GetComponent<DestroyableComponent>().Imagination = 6; });
                 }
                 
                 await using var ctx = new UchuContext();
@@ -61,12 +56,18 @@ namespace Uchu.World
                     await UnlockEmoteAsync(unlockedEmote.EmoteId);
                 }
 
+                // Update the player view filters every five seconds
                 Zone.Update(this, async () =>
                 {
                     await Perspective.TickAsync();
-
-                    await CheckBannedStatusAsync();
                 }, 20 * 5);
+                
+                // Check banned status every minute
+                // TODO: Find an active method instead of polling
+                Zone.Update(this, async () =>
+                {
+                    await CheckBannedStatusAsync();
+                }, 20 * 60);
             });
             
             Listen(OnDestroyed, () =>
@@ -78,7 +79,9 @@ namespace Uchu.World
             });
         }
 
-        public AsyncEventDictionary<string, FireServerEventMessage> OnFireServerEvent { get; }
+        public Event<string, FireServerEventMessage> OnFireServerEvent { get; }
+
+        public Event<int, GameObject, Lot> OnRespondToMission { get; }
 
         public Event<Lot> OnLootPickup { get; }
         
@@ -96,30 +99,21 @@ namespace Uchu.World
         
         public string GuildInviteName { get; set; }
         
-        private SemaphoreSlim Lock { get; }
+        public SemaphoreSlim Lock { get; }
         
         public int Ping => Connection.AveragePing;
         
         public override string Name
         {
             get => ObjectName;
-            set
-            {
-                ObjectName = value;
-                
-                Zone.BroadcastMessage(new SetNameMessage
-                {
-                    Associate = this,
-                    Name = value
-                });
-            }
+            set => ObjectName = value;
         }
 
         /// <summary>
-        ///    Negative offset for the SetCurrency message.
+        /// Negative offset for the SetCurrency message.
         /// </summary>
         /// <remarks>
-        ///    Used when the client adds currency by itself. E.g, achievements.
+        /// Used when the client adds currency by itself. E.g, achievements.
         /// </remarks>
         public long HiddenCurrency { get; set; }
 
@@ -276,12 +270,45 @@ namespace Uchu.World
             return flagValues;
         }
 
+        /// <summary>
+        /// Triggers a celebration for the player
+        /// </summary>
+        /// <param name="celebrationId">The Id of the celebration to trigger</param>
+        public async Task TriggerCelebration(Celebration celebrationId)
+        {
+            var celebration = (await new CdClientContext().CelebrationParametersTable.
+                Where(t => t.Id == (int)celebrationId).ToArrayAsync())[0];
+
+            this.Message(new StartCelebrationEffectMessage
+            {
+                Associate = this,
+                Animation = celebration.Animation,
+                BackgroundObject = new Lot(celebration.BackgroundObject.Value),
+                CameraPathLOT = new Lot(celebration.CameraPathLOT.Value),
+                CeleLeadIn = celebration.CeleLeadIn.Value,
+                CeleLeadOut = celebration.CeleLeadOut.Value,
+                CelebrationID = celebration.Id.Value,
+                Duration = celebration.Duration.Value,
+                IconID = celebration.IconID.Value,
+                MainText = celebration.MainText,
+                MixerProgram = celebration.MixerProgram,
+                MusicCue = celebration.MusicCue,
+                PathNodeName = celebration.PathNodeName,
+                SoundGUID = celebration.SoundGUID,
+                SubText = celebration.SubText
+            }); // Start effect
+        }
+
+        /// <summary>
+        /// Constructs the player, settings spawn parameters and masks
+        /// </summary>
+        /// <param name="character">The character that should be spawned</param>
+        /// <param name="connection">User endpoint for this character</param>
+        /// <param name="zone">The zone to spawn in</param>
+        /// <returns>The constructed player</returns>
         internal static async Task<Player> ConstructAsync(Character character, IRakConnection connection, Zone zone)
         {
-            //
             // Create base gameobject
-            //
-            
             var instance = Instantiate<Player>(
                 zone,
                 character.Name,
@@ -292,10 +319,7 @@ namespace Uchu.World
                 1
             );
             
-            //
             // Setup layers
-            //
-            
             instance.Layer = StandardLayer.Player;
             
             var layer = StandardLayer.All;
@@ -308,22 +332,17 @@ namespace Uchu.World
             maskFilter.ViewMask = layer;
 
             instance.Perspective.AddFilter<RenderDistanceFilter>();
-            instance.Perspective.AddFilter<FlagFilter>();
+            
+            // TODO: Handles visibility of flags, should be handled in character XML, not here
+            // Causes a major performance penalty, therefore disabled
+            // instance.Perspective.AddFilter<FlagFilter>();
             instance.Perspective.AddFilter<ExcludeFilter>();
-            
-            //
-            // Set connection
-            //
-
             instance.Connection = connection;
-
-            //
-            // Add serialized components
-            //
             
+            // Add serialized components
             var controllablePhysics = instance.AddComponent<ControllablePhysicsComponent>();
             instance.AddComponent<DestructibleComponent>();
-            var stats = instance.GetComponent<Stats>();
+            var stats = instance.GetComponent<DestroyableComponent>();
             var characterComponent = instance.AddComponent<CharacterComponent>();
             var inventory = instance.AddComponent<InventoryComponent>();
             
@@ -336,10 +355,7 @@ namespace Uchu.World
             stats.HasStats = true;
             characterComponent.Character = character;
             
-            //
             // Equip items
-            //
-
             await using (var ctx = new UchuContext())
             {
                 var items = await ctx.InventoryItems.Where(
@@ -358,19 +374,13 @@ namespace Uchu.World
                 }
             }
             
-            //
             // Server Components
-            //
-            
             instance.AddComponent<MissionInventoryComponent>();
             instance.AddComponent<InventoryManagerComponent>();
             instance.AddComponent<TeamPlayerComponent>();
             instance.AddComponent<ModularBuilderComponent>();
             
-            //
             // Physics
-            //
-
             var physics = instance.AddComponent<PhysicsComponent>();
 
             var box = CapsuleBody.Create(
@@ -381,24 +391,16 @@ namespace Uchu.World
             );
 
             physics.SetPhysics(box);
-
-            instance.Listen(physics.OnEnter, instance.OnEnterCollision);
-
-            instance.Listen(physics.OnCollision, instance.OnStayCollision);
             
+            instance.Listen(physics.OnEnter, instance.OnEnterCollision);
+            instance.Listen(physics.OnCollision, instance.OnStayCollision);
             instance.Listen(physics.OnLeave, instance.OnLeaveCollision);
             
-            //
             // Register player gameobject in zone
-            //
-            
             Start(instance);
             Construct(instance);
-
-            //
-            // Register player as an active in zone
-            //
             
+            // Register player as an active in zone
             await zone.RegisterPlayer(instance);
 
             return instance;
@@ -406,17 +408,17 @@ namespace Uchu.World
 
         private void OnStayCollision(PhysicsComponent other)
         {
-            Logger.Information($"{this} stayed {other.GameObject}");
+            // Logger.Debug($"{this} stayed {other.GameObject}");
         }
         
         private void OnEnterCollision(PhysicsComponent other)
         {
-            Logger.Information($"{this} entered {other.GameObject}");
+            Logger.Debug($"{this} entered {other.GameObject}");
         }
         
         private void OnLeaveCollision(PhysicsComponent other)
         {
-            Logger.Information($"{this} left {other.GameObject}");
+            Logger.Debug($"{this} left {other.GameObject}");
         }
 
         private void UpdatePhysics(Vector3 position, Quaternion rotation)
@@ -545,7 +547,7 @@ namespace Uchu.World
             Message(new ServerRedirectionPacket
             {
                 Port = (ushort) specification.Port,
-                Address = Server.GetHost()
+                Address = UchuServer.Host
             });
 
             return true;
@@ -559,7 +561,7 @@ namespace Uchu.World
 
             try
             {
-                server = await ServerHelper.RequestWorldServerAsync(Server, zoneId);
+                server = await ServerHelper.RequestWorldServerAsync(UchuServer, zoneId);
             }
             catch (Exception e)
             {
@@ -575,11 +577,22 @@ namespace Uchu.World
                 return false;
             }
 
-            if (Server.Port != server.Port) return await SendToWorldAsync(server, zoneId);
+            if (UchuServer.Port != server.Port) return await SendToWorldAsync(server, zoneId);
             
             Logger.Error("Could not send a player to the same port as it already has");
 
             return false;
+        }
+
+        public void SetName(string name)
+        {
+            this.Name = name;
+
+            this.Message(new SetNameMessage
+            {
+                Associate = this,
+                Name = name
+            });
         }
 
         private async Task SetCurrencyAsync(long currency)
@@ -609,15 +622,6 @@ namespace Uchu.World
             var character = await ctx.Characters.FirstAsync(c => c.Id == Id);
 
             character.UniverseScore = score;
-
-            foreach (var levelProgressionLookup in cdClient.LevelProgressionLookupTable)
-            {
-                if (levelProgressionLookup.RequiredUScore > score) break;
-
-                Debug.Assert(levelProgressionLookup.Id != null, "levelProgressionLookup.Id != null");
-
-                character.Level = levelProgressionLookup.Id.Value;
-            }
 
             Message(new ModifyLegoScoreMessage
             {

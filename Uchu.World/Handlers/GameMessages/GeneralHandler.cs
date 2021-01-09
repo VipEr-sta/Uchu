@@ -24,12 +24,18 @@ namespace Uchu.World.Handlers.GameMessages
                 // Multi-interact is mission
                 //
 
-                if (message.MultiInteractType == default)
+                if (message.MultiInteractType == 0) // Mission Component
                 {
                     player.GetComponent<MissionInventoryComponent>().MessageOfferMission(
                         (int) message.MultiInteractId,
                         message.TargetObject
                     );
+                } 
+                else if (message.MultiInteractType == 1) // Any other case
+                {
+                    await message.TargetObject.OnInteract.InvokeAsync(player);
+
+                    await inventory.InteractAsync(message.TargetObject.Lot);
                 }
             }
             else if (message.TargetObject != default)
@@ -95,6 +101,44 @@ namespace Uchu.World.Handlers.GameMessages
             if (message.Target?.OnEmoteReceived != default)
             {
                 await message.Target.OnEmoteReceived.InvokeAsync(message.EmoteId, player);
+            }
+        }
+
+        [PacketHandler]
+        public async Task NotifyServerLevelProcessingCompleteHandler(NotifyServerLevelProcessingCompleteMessage message, Player player)
+        {
+            await using var ctx = new UchuContext();
+            await using var cdClient = new CdClientContext();
+
+            var character = await ctx.Characters.FirstAsync(c => c.Id == player.Id);
+
+            var lookup_val = 0;
+
+            foreach (var levelProgressionLookup in cdClient.LevelProgressionLookupTable)
+            {
+                if (levelProgressionLookup.RequiredUScore > character.UniverseScore) break;
+
+                lookup_val = levelProgressionLookup.Id.Value;
+            }
+
+            Logger.Debug($"Attempting to assign level {lookup_val} to {character.Name} (They are currently level {character.Level})");
+
+            if (lookup_val > character.Level)
+            {
+                character.Level = lookup_val;
+                GameObject.Serialize(player);
+                await ctx.SaveChangesAsync();
+
+                player.Zone.BroadcastMessage(new PlayFXEffectMessage
+                {
+                    Associate = player,
+                    EffectId = 7074,
+                    EffectType = "create",
+                    Name = "levelup_body_glow"
+                });
+
+                player.Zone.BroadcastChatMessage($"{character.Name} has reached Level {character.Level}!");
+                Logger.Debug($"Assigned level {lookup_val} to {character.Name} (They are now currently level {character.Level})");
             }
         }
     }

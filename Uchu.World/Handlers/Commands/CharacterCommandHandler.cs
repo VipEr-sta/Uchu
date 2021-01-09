@@ -1,14 +1,16 @@
+using InfectedRose.Lvl;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
-using InfectedRose.Lvl;
-using Microsoft.EntityFrameworkCore;
 using Uchu.Core;
 using Uchu.Core.Client;
+using Uchu.Core.Resources;
 using Uchu.World.Filters;
 using Uchu.World.Scripting.Native;
 using Uchu.World.Social;
@@ -18,7 +20,7 @@ namespace Uchu.World.Handlers.Commands
     public class CharacterCommandHandler : HandlerGroup
     {
         [CommandHandler(Signature = "chat", Help = "Change chat level", GameMasterLevel = GameMasterLevel.Player)]
-        public async Task<string> ChangeChatLevel(string[] arguments, Player player)
+        public string ChangeChatLevel(string[] arguments, Player player)
         {
             if (arguments.Length == default) return "chat <level>";
 
@@ -141,7 +143,7 @@ namespace Uchu.World.Handlers.Commands
 
             if (factionSided)
             {
-                if (obj.TryGetComponent<Stats>(out var stats))
+                if (obj.TryGetComponent<DestroyableComponent>(out var stats))
                 {
                     stats.Factions = new[] {int.Parse(arguments[2])};
                     stats.Enemies = new[] {int.Parse(arguments[3])};
@@ -182,6 +184,22 @@ namespace Uchu.World.Handlers.Commands
 
             return "You smashed yourself";
         }
+        
+        [CommandHandler(Signature = "buffme", Help = "Boost stats for testing", GameMasterLevel = GameMasterLevel.Admin)]
+        public string Buffme(string[] arguments, Player player)
+        {
+            DestroyableComponent comp = player.GetComponent<DestroyableComponent>();
+
+            comp.MaxArmor = 999;
+            comp.MaxHealth = 999;
+            comp.Armor = 999;
+            comp.Health = 999;
+
+            comp.MaxImagination = 999;
+            comp.Imagination = 999;
+
+            return "Buffed";
+        }
 
         [CommandHandler(Signature = "freecam", Help = "(Broken)", GameMasterLevel = GameMasterLevel.Admin)]
         public string Freecam(string[] arguments, Player player)
@@ -194,10 +212,13 @@ namespace Uchu.World.Handlers.Commands
             return "Toggled freecam.";
         }
 
-        [CommandHandler(Signature = "fly", Help = "Change jetpack state", GameMasterLevel = GameMasterLevel.Admin)]
+        [CommandHandler(Signature = "fly", Help = "Change jetpack state", GameMasterLevel = GameMasterLevel.Mythran)]
         public string Fly(string[] arguments, Player player)
         {
-            if (arguments.Length != 1) return "fly <state(on/off)>";
+            if (arguments.Length != 1 && arguments.Length != 2) return "fly <state(on/off)>";
+
+            float JetPackAirSpeed = 10;
+            float JetPackMaxAirSpeed = 15;
 
             bool state;
             switch (arguments[0].ToLower())
@@ -214,12 +235,24 @@ namespace Uchu.World.Handlers.Commands
                     return "Invalid <state(on/off)>";
             }
 
+            if (arguments.Length == 2)
+            {
+                if (float.TryParse(arguments[1], out float Speed))
+                {
+                    JetPackAirSpeed = Speed;
+                    JetPackMaxAirSpeed = Speed + 5;
+                }
+            }
+
+
             player.Message(new SetJetPackModeMessage
             {
                 Associate = player,
                 BypassChecks = true,
                 Use = state,
-                EffectId = 36
+                EffectId = 36,
+                AirSpeed = JetPackAirSpeed,
+                MaxAirSpeed = JetPackMaxAirSpeed
             });
 
             return $"Toggled jetpack state: {state}";
@@ -342,7 +375,7 @@ namespace Uchu.World.Handlers.Commands
             {
                 info.Append($"\n{component.GetType().Name}");
 
-                if (component is Stats stats)
+                if (component is DestroyableComponent stats)
                 {
                     info.Append($" {stats.HasStats}");
                 }
@@ -431,7 +464,7 @@ namespace Uchu.World.Handlers.Commands
 
             if (!long.TryParse(arguments[1], out var value)) return "Invalid <value>";
 
-            var stats = player.GetComponent<Stats>();
+            var stats = player.GetComponent<DestroyableComponent>();
 
             var stat = arguments[0].ToLower().Replace("-", "").Replace("_", "");
             switch (stat)
@@ -691,32 +724,50 @@ namespace Uchu.World.Handlers.Commands
                 return "world <zoneId>";
 
             if (!int.TryParse(arguments[0], out var id)) return "Invalid <zoneId>";
-            
-            //
-            // We don't want to lock up the server on a world server request, as it may take time.
-            //
-            
-            player.Zone.BroadcastMessage(new SetStunnedMessage
-            {
-                Associate = player,
-                CantMove = true,
-                CantJump = true,
-                CantAttack = true,
-                CantTurn = true,
-                CantUseItem = true,
-                CantEquip = true,
-                CantInteract = true
-            });
 
-            var _ = Task.Run(async () =>
+            using CdClientContext ctx = new CdClientContext();
+
+            ZoneTable WorldTable = ctx.ZoneTableTable.FirstOrDefault(t => t.ZoneID == id);
+
+            if (WorldTable == default)
             {
-                if (!await player.SendToWorldAsync((ZoneId) id))
+                return $"Can't find world with ID {id}";
+            }
+
+            string WorldName = WorldTable.ZoneName;
+
+            if (WorldName.EndsWith(".luz"))
+            {
+                //
+                // We don't want to lock up the server on a world server request, as it may take time.
+                //
+
+                player.Zone.BroadcastMessage(new SetStunnedMessage
                 {
-                    player.SendChatMessage($"Failed to transfer to {id}, please try later.");
-                }
-            });
-            
-            return $"Requesting transfer to {id}, please wait...";
+                    Associate = player,
+                    CantMove = true,
+                    CantJump = true,
+                    CantAttack = true,
+                    CantTurn = true,
+                    CantUseItem = true,
+                    CantEquip = true,
+                    CantInteract = true
+                });
+
+                var _ = Task.Run(async () =>
+                {
+                    if (!await player.SendToWorldAsync((ZoneId)id))
+                    {
+                        player.SendChatMessage($"Failed to transfer to {id}, please try later.");
+                    }
+                });
+
+                return $"Requesting transfer to {id}, please wait...";
+            } 
+            else
+            {
+                return $"Can't find world with ID {id}";
+            }           
         }
 
         [CommandHandler(Signature = "monitor", Help = "Get server info", GameMasterLevel = GameMasterLevel.Admin)]
@@ -951,7 +1002,7 @@ namespace Uchu.World.Handlers.Commands
             return "Sent announcement";
         }
 
-        [CommandHandler(Signature = "complete", Help = "Complete active missions", GameMasterLevel = GameMasterLevel.Admin)]
+        [CommandHandler(Signature = "complete", Help = "Complete active missions", GameMasterLevel = GameMasterLevel.Mythran)]
         public async Task<string> Complete(string[] arguments, Player player)
         {
             var missions = player.GetComponent<MissionInventoryComponent>().MissionInstances;
@@ -1006,6 +1057,48 @@ namespace Uchu.World.Handlers.Commands
             }
 
             return "Cleared inventory";
+        }
+
+        [CommandHandler(Signature = "setflag", Help = "Sets a client flag", GameMasterLevel = GameMasterLevel.Admin)]
+        public async Task<string> SetFlag(string[] arguments, Player player)
+        {
+            if (arguments.Length != 1)
+                return "/setflag <flag>";
+
+            if (!int.TryParse(arguments[1], out var flag))
+                return "/setflag <flag>";
+
+            await player.SetFlagAsync(flag, true);
+
+            return $"Set flag {arguments[1]}";
+        }
+
+        [CommandHandler(Signature = "triggercelebrate", Help = "Triggers celebration", GameMasterLevel = GameMasterLevel.Admin)]
+        public async Task<string> TriggerCelebrat(string[] arguments, Player player)
+        {
+            if (arguments.Length != 1)
+                return "/triggercelebrate <CelebrationID>";
+
+            if (!int.TryParse(arguments[1], out var id))
+                return "/triggercelebrate <CelebrationID>";
+
+            await player.TriggerCelebration((Celebration)id);
+
+            return $"Triggered Celebration {arguments[1]}";
+        }
+
+        [CommandHandler(Signature = "removeflag", Help = "Removes a client flag", GameMasterLevel = GameMasterLevel.Admin)]
+        public async Task<string> RemoveFlag(string[] arguments, Player player)
+        {
+            if (arguments.Length != 1)
+                return "/removeflag <flag>";
+
+            if (!int.TryParse(arguments[1], out int flag))
+                return "/removeflag <flag>";
+
+            await player.SetFlagAsync(flag, false);
+
+            return $"Removed flag {arguments[1]}";
         }
 
         [CommandHandler(Signature = "inventory", Help = "Set inventory size", GameMasterLevel = GameMasterLevel.Admin)]

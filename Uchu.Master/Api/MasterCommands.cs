@@ -204,12 +204,20 @@ namespace Uchu.Master.Api
                         instance.ApiPort, "server/verify"
                     ).ConfigureAwait(false);
 
-                    if (!verify.Success)
+                    try
                     {
-                        Logger.Error(verify.FailedReason);
+                        if (verify == null) throw new Exception("ReadyCallbackResponse was null");
 
-                        throw new Exception(verify.FailedReason);
+                        if (!verify.Success)
+                        {
+                            Logger.Error(verify.FailedReason);
+
+                            throw new Exception(verify.FailedReason);
+                        }
+                    } catch (Exception e) {
+                        Logger.Log(e.Message, LogLevel.Error);
                     }
+
 
                     instance.Ready = true;
                     
@@ -233,7 +241,7 @@ namespace Uchu.Master.Api
 
 
         [ApiCommand("instance/decommission")]
-        public async Task<object> DecommissionInstance(string id)
+        public object DecommissionInstance(string id)
         {
             var response = new BaseResponse();
             
@@ -357,7 +365,7 @@ namespace Uchu.Master.Api
         }
 
         [ApiCommand("master/status")]
-        public async Task<object> MasterStatus()
+        public object MasterStatus()
         {
             var response = new MasterStatusResponse();
 

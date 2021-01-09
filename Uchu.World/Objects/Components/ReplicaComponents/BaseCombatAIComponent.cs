@@ -30,13 +30,13 @@ namespace Uchu.World
 
         private QuickBuildComponent QuickBuildComponent { get; set; }
 
-        private Stats Stats { get; set; }
+        private DestroyableComponent Stats { get; set; }
 
         public bool Enabled { get; set; } = true;
 
         public BaseCombatAiComponent()
         {
-            Listen(OnStart, async () =>
+            Listen(OnStart, () =>
             {
                 SkillEntries = new List<NpcSkillEntry>();
 
@@ -48,7 +48,7 @@ namespace Uchu.World
 
                     QuickBuildComponent = GameObject.GetComponent<QuickBuildComponent>();
 
-                    Stats = GameObject.GetComponent<Stats>();
+                    Stats = GameObject.GetComponent<DestroyableComponent>();
 
                     foreach (var skillEntry in SkillComponent.DefaultSkillSet)
                     {
@@ -59,7 +59,7 @@ namespace Uchu.World
                         );
 
                         await SkillComponent.CalculateSkillAsync((int) skillEntry.SkillId, true);
-                        
+
                         SkillEntries.Add(new NpcSkillEntry
                         {
                             SkillId = skillEntry.SkillId,
@@ -139,7 +139,7 @@ namespace Uchu.World
 
             if (Stats.Factions.Length == default) return new GameObject[0];
 
-            var entries = Zone.Objects.OfType<Stats>();
+            var entries = Zone.Objects.OfType<DestroyableComponent>();
 
             var targets = new List<GameObject>();
 
