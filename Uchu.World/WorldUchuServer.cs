@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Net;
 using System.Reflection;
 using System.Threading.Tasks;
+using System.Timers;
 using RakDotNet;
 using RakDotNet.IO;
 using Uchu.Api.Models;
@@ -32,6 +32,15 @@ namespace Uchu.World
         
         public Whitelist Whitelist { get; private set; }
 
+        /// <summary>
+        /// Sends a heart beat to the master server, indicating the health of the server
+        /// </summary>
+        public async Task SendHeartBeat()
+        {
+            await Api.RunCommandAsync<BaseResponse>(MasterApi, $"instance/heartbeat?instance={Id.ToString()}")
+                .ConfigureAwait(false);
+        }
+
         public WorldUchuServer(Guid id) : base(id)
         {
             Zones = new List<Zone>();
@@ -44,15 +53,13 @@ namespace Uchu.World
         public override async Task ConfigureAsync(string configFile)
         {
             Logger.Information($"Created WorldServer on PID {Process.GetCurrentProcess().Id.ToString()}");
-
             await base.ConfigureAsync(configFile);
-            
+
             ZoneParser = new ZoneParser(Resources);
-            
             Whitelist = new Whitelist(Resources);
-            
+
             await Whitelist.LoadDefaultWhitelist();
-            
+
             GameMessageReceived += HandleGameMessageAsync;
             ServerStopped += () =>
             {
@@ -62,18 +69,16 @@ namespace Uchu.World
                 }
             };
 
-            RakNetServer.ClientDisconnected += HandleDisconnect;
-            
             var instance = await Api.RunCommandAsync<InstanceInfoResponse>(
                 Config.ApiConfig.Port, $"instance/target?i={Id}"
             ).ConfigureAwait(false);
 
             ZoneId = (ZoneId) instance.Info.Zones.First();
-            
+
             var info = await Api.RunCommandAsync<InstanceInfoResponse>(MasterApi, $"instance/target?i={Id}");
 
             Api.RegisterCommandCollection<WorldCommands>(this);
-            
+
             ManagedScriptEngine.AdditionalPaths = Config.ManagedScriptSources.Paths.ToArray();
 
             _ = Task.Run(async () =>
@@ -81,7 +86,7 @@ namespace Uchu.World
                 Logger.Information("Loading CDClient cache");
                 await ClientCache.LoadAsync();
             });
-            
+
             _ = Task.Run(async () =>
             {
                 Logger.Information($"Setting up zones for world server {Id}");
@@ -91,22 +96,6 @@ namespace Uchu.World
                     await LoadZone(zone);
                 }
             });
-        }
-
-        private Task HandleDisconnect(IPEndPoint point, CloseReason reason)
-        {
-            Logger.Information($"{point} disconnected: {reason}");
-
-            var players = Zones.Select(zone =>
-                zone.Players.FirstOrDefault(p => p.Connection.EndPoint.Equals(point))
-            ).Where(player => player != default);
-            
-            foreach (var player in players)
-            {
-                Object.Destroy(player);
-            }
-
-            return Task.CompletedTask;
         }
 
         private async Task LoadZone(int zoneId)
@@ -247,13 +236,10 @@ namespace Uchu.World
                 return;
             }
 
-            var session = SessionCache.GetSession(connection.EndPoint);
-
             Logger.Debug($"Received {(GameMessageId)messageId}");
 
             // Check if this message came from a logged in player
-            var player = Zones.Where(z => z.ZoneId == session.ZoneId).SelectMany(z => z.Players)
-                .FirstOrDefault(p => p.Connection.Equals(connection));
+            var player = Zones.SelectMany(z => z.Players).FirstOrDefault(p => p.Connection.Equals(connection));
             if (player?.Zone == default)
             {
                 Logger.Error($"{connection} is not logged in but sent a GameMessage.");

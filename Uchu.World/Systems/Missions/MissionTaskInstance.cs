@@ -17,20 +17,9 @@ namespace Uchu.World.Systems.Missions
             Mission = mission;
             TaskId = taskId;
             MissionTaskIndex = missionTaskIndex;
-        }
-
-        public MissionTaskInstance(MissionInstance mission, MissionTaskInstance cachedInstance)
-        {
-            Mission = mission;
-            TaskId = cachedInstance.TaskId;
-            MissionTaskIndex = cachedInstance.MissionTaskIndex;
-            Target = cachedInstance.Target;
-            TargetGroup = (int[])cachedInstance.TargetGroup.Clone();
-            Parameters = (int[])cachedInstance.Parameters.Clone();
-            RequiredProgress = cachedInstance.RequiredProgress;
             Progress = new List<float>();
         }
-        
+
         #region properties
         
         /// <summary>
@@ -196,21 +185,6 @@ namespace Uchu.World.Systems.Missions
         /// </example>
         protected void AddProgress(float value)
         {
-            // Saving the progress can happen in the background
-            _ = Task.Run(async () =>
-            {
-                await using var ctx = new UchuContext();
-
-                var mission = await ctx.Missions
-                    .Include(m => m.Tasks)
-                    .ThenInclude(t => t.Values)
-                    .FirstAsync(m => m.MissionId == Mission.MissionId && m.CharacterId == Mission.Player.Id);
-                var task = mission.Tasks.First(m => m.TaskId == TaskId);
-                task.Add(value);
-
-                await ctx.SaveChangesAsync();
-            });
-                
             Progress.Add(value);
             MessageUpdateMissionTask();
         }
@@ -237,6 +211,14 @@ namespace Uchu.World.Systems.Missions
         {
             if (Mission.Completed)
                 await Mission.SoftCompleteAsync();
+        }
+        
+        /// <summary>
+        /// Restarts the task status.
+        /// </summary>
+        public void Restart()
+        {
+            this.Progress = new List<float>();
         }
     }
 }

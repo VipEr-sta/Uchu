@@ -23,33 +23,6 @@ namespace Uchu.Core
             Value = value;
         }
 
-        #region Networking
-
-        [SuppressMessage("ReSharper", "CA2000")]
-        public async Task<InventoryItem> FindItemAsync()
-        {
-            await using var ctx = new UchuContext();
-
-            var id = (long) Value;
-
-            return await ctx.InventoryItems.FirstOrDefaultAsync(
-                i => i.Id == id
-            ).ConfigureAwait(false);
-        }
-
-        public InventoryItem FindItem()
-        {
-            using var ctx = new UchuContext();
-
-            var id = (long) Value;
-
-            return ctx.InventoryItems.FirstOrDefault(
-                i => i.Id == id
-            );
-        }
-
-        #endregion
-
         #region Standard
 
         public override string ToString()
@@ -91,7 +64,7 @@ namespace Uchu.Core
             return objectId.Value;
         }
 
-        public static implicit operator ObjectId(ulong id)
+        public static explicit operator ObjectId(ulong id)
         {
             return new ObjectId(id);
         }
@@ -101,7 +74,7 @@ namespace Uchu.Core
             return (long) objectId.Value;
         }
         
-        public static implicit operator ObjectId(long id)
+        public static explicit operator ObjectId(long id)
         {
             return new ObjectId((ulong) id);
         }
@@ -112,12 +85,12 @@ namespace Uchu.Core
             
             id |= (long) flags;
 
-            return id;
+            return (ObjectId) id;
         }
 
-        public static ObjectId Standalone => RandomLong(1000000000000000000, 1999999999999999999);
+        public static ObjectId Standalone => (ObjectId) RandomLong(1000000000000000000, 1999999999999999999);
 
-        public static ObjectId Invalid => 0L;
+        public static ObjectId Invalid => (ObjectId) 0L;
         
         private static long RandomLong(long min, long max)
         {

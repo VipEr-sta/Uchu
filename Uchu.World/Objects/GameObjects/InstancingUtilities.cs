@@ -28,7 +28,7 @@ namespace Uchu.World
                 position: levelObject.Position,
                 rotation: levelObject.Rotation,
                 scale: -1,
-                objectId: (long) levelObject.ObjectId,
+                objectId: (ObjectId) levelObject.ObjectId,
                 lot: levelObject.Lot
             );
 
@@ -60,7 +60,7 @@ namespace Uchu.World
                 wayPoint.Position,
                 wayPoint.Rotation,
                 -1,
-                spawnerPath.SpawnerObjectId,
+                (ObjectId) spawnerPath.SpawnerObjectId,
                 Lot.Spawner
             );
 
@@ -126,6 +126,7 @@ namespace Uchu.World
         public static void InstantiateCurrency(int currency, Player owner, GameObject source, Vector3 spawn)
         {
             if (owner is null) return;
+            if (currency <= 0) return;
             
             try
             {
@@ -146,7 +147,8 @@ namespace Uchu.World
                     FinalPosition = finalPosition
                 });
 
-                owner.EntitledCurrency += currency;
+                var character = owner.GetComponent<CharacterComponent>();
+                character.EntitledCurrency += currency;
             }
             catch (Exception e)
             {

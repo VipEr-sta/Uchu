@@ -11,7 +11,7 @@ namespace Uchu.World.Handlers
 {
     public class SocialHandler : HandlerGroup
     {
-        private static string[] ClientCommands = { "/quit", "/exit", "/logoutcharacter", "/camp", "/logoutaccount", "/logout", "/say", "/s",
+        public static string[] ClientCommands = { "/quit", "/exit", "/logoutcharacter", "/camp", "/logoutaccount", "/logout", "/say", "/s",
             "/whisper", "/w", "/tell", "/team", "/t", "/location", "/locate", "/loc", "/faq", "/faqs", "/shop", "/store", "/minigames", "/forums",
             "/thumbsup", "/thumb", "/thumb", "/victory", "/backflip", "/clap", "/cringe", "/cry", "/dance", "/gasp", "/giggle", "/talk", "/salute",
             "/shrug", "/sigh", "/wave", "/why", "/thanks", "/yes", "/addfriend", "/removefriend", "/addignore", "/removeignore", "/recommendedperfoptions",
@@ -40,6 +40,8 @@ namespace Uchu.World.Handlers
             if (message.Message.StartsWith('/') && !ClientCommands.Contains(message.Message.Split(" ").ElementAt(0)))
             {
 
+                //Logger.Debug($"message.Message: {message.Message}");
+
                 if (ClientCommands.Contains(message.Message.Split(" ").ElementAt(0)))
                     return;
 
@@ -53,6 +55,19 @@ namespace Uchu.World.Handlers
                 {
                     player.SendChatMessage(response, PlayerChatChannel.Normal);
                 }
+                
+                var CommandTranscript = new ChatTranscript
+                {
+                    Author = character.Id,
+                    Message = message.Message,
+                    Receiver = 0,
+                    SentTime = DateTime.Now
+                };
+
+                await ctx.ChatTranscript.AddAsync(CommandTranscript);
+
+                await ctx.SaveChangesAsync();
+                
                 return;
             }
 
@@ -190,7 +205,7 @@ namespace Uchu.World.Handlers
                     IsBestFriend = characterFriend.BestFriend,
                     IsFreeToPlay = friend.FreeToPlay,
                     IsOnline = player != default,
-                    PlayerId = player?.Id ?? -1,
+                    PlayerId = player?.Id ?? (ObjectId) (-1),
                     PlayerName = friend.Name,
                     ZoneId = (ZoneId) friend.LastZone,
                     WorldClone = (uint) friend.LastClone,
@@ -350,19 +365,10 @@ namespace Uchu.World.Handlers
         }
 
         [PacketHandler]
-        public void TeamInviteResponseHandler(TeamInviteResponse packet, IPEndPoint endPoint)
+        public void TeamInviteResponseHandler(TeamInviteResponse packet, IRakConnection connection)
         {
-            var session = UchuServer.SessionCache.GetSession(endPoint);
-            var zone = ((WorldUchuServer) UchuServer).Zones.FirstOrDefault(z => (int) z.ZoneId == session.ZoneId);
-
-            if (zone == default)
-            {
-                Logger.Error($"Invalid ZoneId for {endPoint}");
-                return;
-            }
-
-            var player = zone.Players.First(p => p.Connection.EndPoint.Equals(endPoint));
-            var author = zone.Players.First(p => p.Id == packet.InviterObjectId);
+            var player = UchuServer.FindPlayer(connection);
+            var author = player.Zone.Players.First(p => p.Id == packet.InviterObjectId);
 
             Logger.Information($"{player} responded to {author}'s team invite with Declined: {packet.IsDeclined}");
 

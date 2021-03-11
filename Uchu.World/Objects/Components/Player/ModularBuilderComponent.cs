@@ -2,6 +2,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using InfectedRose.Lvl;
 using Uchu.Core;
+using Uchu.Core.Client;
 
 namespace Uchu.World
 {
@@ -31,16 +32,15 @@ namespace Uchu.World
 
         public async Task StartBuildingAsync(StartBuildingWithItemMessage message)
         {
-            if (!(GameObject is Player player)) return;
+            if (!(GameObject is Player player))
+                return;
 
             var inventory = GameObject.GetComponent<InventoryManagerComponent>();
-            
             var thinkingHat = inventory[InventoryType.Items].Items.First(i => i.Lot == 6086);
 
             await thinkingHat.EquipAsync(true);
             
             IsBuilding = true;
-            
             BasePlate = message.Associate;
             
             player.Message(new StartArrangingWithItemMessage
@@ -89,9 +89,10 @@ namespace Uchu.World
         {
             var inventory = GameObject.GetComponent<InventoryManagerComponent>();
 
-            foreach (var module in models)
+            // Remove all the items that were used for building this module
+            foreach (var lot in models)
             {
-                inventory.RemoveItem(module, 1, InventoryType.TemporaryModels);
+                await inventory.RemoveLotAsync(lot, 1, InventoryType.TemporaryModels);
             }
 
             var model = new LegoDataDictionary
@@ -99,7 +100,7 @@ namespace Uchu.World
                 ["assemblyPartLOTs"] = LegoDataList.FromEnumerable(models.Select(s => s.Id))
             };
             
-            await inventory.AddItemAsync(6416, 1, InventoryType.Models, model);
+            await inventory.AddLotAsync(6416, 1, model, InventoryType.Models);
 
             await ConfirmFinish();
         }
@@ -127,23 +128,24 @@ namespace Uchu.World
 
         public async Task ConfirmFinish()
         {
-            if (!(GameObject is Player player)) return;
+            if (!(GameObject is Player player))
+                return;
 
             var inventory = GameObject.GetComponent<InventoryManagerComponent>();
-            
-            foreach (var temp in inventory[InventoryType.TemporaryModels].Items)
+            if (inventory[InventoryType.TemporaryModels] != null)
             {
-                await inventory.MoveItemsBetweenInventoriesAsync(
-                    temp,
-                    temp.Lot,
-                    temp.Count,
-                    InventoryType.TemporaryModels,
-                    InventoryType.Models
-                );
+                foreach (var temp in inventory[InventoryType.TemporaryModels].Items)
+                {
+                    await inventory.MoveItemBetweenInventoriesAsync(
+                        temp,
+                        temp.Count,
+                        InventoryType.TemporaryModels,
+                        InventoryType.Models
+                    );
+                }
             }
             
             var thinkingHat = inventory[InventoryType.Items].Items.First(i => i.Lot == 6086);
-
             await thinkingHat.UnEquipAsync();
             
             player.Message(new FinishArrangingWithItemMessage
